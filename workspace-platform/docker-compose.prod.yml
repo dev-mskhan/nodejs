@@ -1,0 +1,117 @@
+services:
+  nginx:
+  image: nginx:alpine
+  container_name: nginx-proxy
+  ports:
+    - "80:80"
+    - "443:443"
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/certs:/etc/nginx/certs:ro        # SSL certs
+  depends_on:
+    - gateway
+  restart: always
+  networks:
+    - api-network
+  ai-service:
+    build:
+      context: ./services/ai-service
+      target: production
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./services/ai-service/.env.prod
+    environment:
+      NODE_ENV: production
+    restart: always
+    networks:
+      - api-network
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      target: production
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./services/analytics-service/.env.prod
+    environment:
+      NODE_ENV: production
+    restart: always
+    networks:
+      - api-network
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      target: production
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./services/auth-service/.env.prod
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    restart: always
+    networks:
+      - api-network
+
+  chat-service:
+    build:
+      context: ./services/chat-service
+      target: production
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./services/chat-service/.env.prod
+    environment:
+      NODE_ENV: production
+    restart: always
+    networks:
+      - api-network
+
+  gateway:
+    build:
+      context: ./services/gateway
+      target: production
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./services/gateway/.env.prod
+    environment:
+      NODE_ENV: production
+    restart: always
+    networks:
+      - api-network
+
+  projects-service:
+    build:
+      context: ./services/projects-service
+      target: production
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./services/projects-service/.env.prod
+    environment:
+      NODE_ENV: production
+    restart: always
+    networks:
+      - api-network
+  notifications-service:
+    build:
+      context: ./services/notifications-service
+      target: production
+    ports: 
+      -"3005:3005"
+    env_file: 
+      - ./services/notifications-service/.env.prod
+    environment: 
+      NODE_ENV: production
+    restart: always
+    networks: 
+      - api-network
+
+networks:
+  api-network:
+    name: api-network
+    driver: bridge

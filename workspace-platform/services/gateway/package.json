@@ -1,0 +1,38 @@
+{
+  "name": "@workspace/gateway",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/server.js",
+  "types": "dist/index.d.ts",
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch --include src/* src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "type": "module",
+  "dependencies": {
+    "@apollo/server": "^4.11.3",
+    "@graphql-tools/executor-http": "^1.1.9",
+    "@graphql-tools/schema": "^10.0.16",
+    "@graphql-tools/stitch": "^9.3.8",
+    "@graphql-tools/wrap": "^10.0.21",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "graphql": "^16.10.0",
+    "graphql-tag": "^2.12.6",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.8",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.8",
+    "tsx": "^4.22.4"
+  }
+}

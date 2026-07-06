@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+!**/.env.example
+coverage
+.vscode
+.idea
+dist/
+node_modules/

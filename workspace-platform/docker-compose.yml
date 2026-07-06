@@ -1,0 +1,218 @@
+services:
+  nginx:
+
+  ai-service:
+    build:
+      context: ./services/ai-service
+      target: development
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./services/ai-service/.env
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/ai-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      target: development
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./services/analytics-service/.env
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/analytics-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      target: development
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./services/auth-service/.env
+    environment:
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+    develop:
+      watch:
+        - path: ./services/auth-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+
+  chat-service:
+    build:
+      context: ./services/chat-service
+      target: development
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./services/chat-service/.env
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/chat-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+
+  gateway:
+    build:
+      context: ./services/gateway
+      target: development
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./services/gateway/.env
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/gateway/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+
+  projects-service:
+    build:
+      context: ./services/projects-service
+      target: development
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./services/projects-service/.env
+    environment:
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/projects-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks:
+      - api-network
+  notifications-service:
+    build:
+      context: ./services/notifications-service
+      target: development
+    ports: 
+      -"3005:3005"
+    env_file: 
+      - ./services/notifications-service/.env
+    environment: 
+      NODE_ENV: development
+    develop:
+      watch:
+        - path: ./services/notifications-service/src
+          action: sync+restart
+          target: /app/src
+    restart: unless-stopped
+    networks: 
+      - api-network
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis-cache
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - api-network
+  mongodb:
+    image: mongo:7
+    expose:
+      - "27017"
+    volumes:
+      - mongo_test_db:/data/db
+    networks:
+      - api-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - api-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks:
+      - api-network
+
+  test-runner:
+    build:
+      context: ./services/${SERVICE:-auth-service}
+      target: development
+    command: npm test -- --watchAll=false --forceExit
+    env_file: ./services/${SERVICE:-auth-service}/.env.test
+    environment:
+      NODE_ENV: test
+      USE_MOCK_REDIS: false
+    volumes:
+      - ./services/${SERVICE:-auth-service}:/app
+      - /app/node_modules
+    working_dir: /app
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - test
+    networks:
+      - api-network
+
+volumes:
+  redis-data:
+  mongo_test_db:
+
+networks:
+  api-network:
+    name: api-network
+    driver: bridge
