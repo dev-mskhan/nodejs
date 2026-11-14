@@ -1,0 +1,1395 @@
+================================================================
+  MINI INVOICE SAAS — FULL PROJECT SCAFFOLD
+  Stack: React + Vite + Tailwind | Node.js + Express | Supabase
+================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DIRECTORY STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+mini-invoice-saas/
+├── frontend/                   ← React + Vite + Tailwind
+│   ├── public/
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── index.js
+│   │   ├── components/
+│   │   │   ├── InvoiceForm.jsx
+│   │   │   ├── InvoiceList.jsx
+│   │   │   ├── ClientForm.jsx
+│   │   │   ├── PDFPreview.jsx
+│   │   │   └── Navbar.jsx
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── NewInvoice.jsx
+│   │   │   └── InvoiceDetail.jsx
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── package.json
+│
+├── backend/                    ← Node.js + Express
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── auth.js
+│   │   │   ├── invoices.js
+│   │   │   ├── clients.js
+│   │   │   └── pdf.js
+│   │   ├── middleware/
+│   │   │   └── auth.js
+│   │   ├── services/
+│   │   │   └── pdfService.js
+│   │   └── index.js
+│   ├── .env
+│   └── package.json
+│
+├── supabase/
+│   └── schema.sql              ← DB schema
+│
+└── README.md
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SUPABASE SCHEMA  (supabase/schema.sql)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+-- Enable UUID generation
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users (mirrors Supabase Auth; extend as needed)
+CREATE TABLE users (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email      TEXT UNIQUE NOT NULL,
+  plan       TEXT NOT NULL DEFAULT 'free',   -- 'free' | 'paid'
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Clients
+CREATE TABLE clients (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  email      TEXT,
+  address    TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Invoices
+CREATE TABLE invoices (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id    UUID REFERENCES users(id) ON DELETE CASCADE,
+  client_id  UUID REFERENCES clients(id) ON DELETE SET NULL,
+  invoice_no TEXT NOT NULL,
+  amount     NUMERIC(12,2) NOT NULL DEFAULT 0,
+  status     TEXT NOT NULL DEFAULT 'unpaid',  -- 'unpaid' | 'paid'
+  due_date   DATE,
+  notes      TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Invoice Line Items
+CREATE TABLE invoice_items (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id  UUID REFERENCES invoices(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity    NUMERIC(10,2) NOT NULL DEFAULT 1,
+  price       NUMERIC(12,2) NOT NULL DEFAULT 0
+);
+
+-- Row Level Security
+ALTER TABLE clients       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoice_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users own their clients"
+  ON clients FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users own their invoices"
+  ON invoices FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users own their invoice items"
+  ON invoice_items FOR ALL
+  USING (invoice_id IN (SELECT id FROM invoices WHERE user_id = auth.uid()));
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — package.json  (backend/package.json)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "mini-invoice-backend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "pdfkit": "^0.14.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — .env  (backend/.env)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PORT=4000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+JWT_SECRET=your-supabase-jwt-secret
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Entry Point  (backend/src/index.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+require('dotenv').config();
+const express = require('express');
+const cors    = require('cors');
+
+const authRoutes     = require('./routes/auth');
+const invoiceRoutes  = require('./routes/invoices');
+const clientRoutes   = require('./routes/clients');
+const pdfRoutes      = require('./routes/pdf');
+
+const app  = express();
+const PORT = process.env.PORT || 4000;
+
+app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(express.json());
+
+app.use('/api/auth',     authRoutes);
+app.use('/api/invoices', invoiceRoutes);
+app.use('/api/clients',  clientRoutes);
+app.use('/api/pdf',      pdfRoutes);
+
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Auth Middleware  (backend/src/middleware/auth.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+module.exports = async function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token' });
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data.user) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  req.user = data.user;
+  next();
+};
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Invoices Route  (backend/src/routes/invoices.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// GET /api/invoices — list all for user
+router.get('/', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, clients(name, email), invoice_items(*)')
+    .eq('user_id', req.user.id)
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// GET /api/invoices/:id
+router.get('/:id', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, clients(*), invoice_items(*)')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+
+  if (error) return res.status(404).json({ error: 'Not found' });
+  res.json(data);
+});
+
+// POST /api/invoices — create invoice + items
+router.post('/', auth, async (req, res) => {
+  const { client_id, due_date, notes, items } = req.body;
+
+  // Enforce free plan limit (3 invoices/month)
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const { count } = await supabase
+    .from('invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', req.user.id)
+    .gte('created_at', startOfMonth.toISOString());
+
+  // Check plan — free users capped at 3/month
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('plan')
+    .eq('id', req.user.id)
+    .single();
+
+  if (userRow?.plan === 'free' && count >= 3) {
+    return res.status(403).json({
+      error: 'Free plan limit reached. Upgrade to create more invoices.'
+    });
+  }
+
+  const total = (items || []).reduce(
+    (sum, i) => sum + i.quantity * i.price, 0
+  );
+
+  const invoice_no = `INV-${Date.now()}`;
+
+  const { data: invoice, error: invErr } = await supabase
+    .from('invoices')
+    .insert({
+      user_id: req.user.id,
+      client_id,
+      invoice_no,
+      amount: total,
+      due_date,
+      notes,
+      status: 'unpaid'
+    })
+    .select()
+    .single();
+
+  if (invErr) return res.status(500).json({ error: invErr.message });
+
+  if (items?.length) {
+    const rows = items.map(i => ({
+      invoice_id:  invoice.id,
+      description: i.description,
+      quantity:    i.quantity,
+      price:       i.price
+    }));
+    await supabase.from('invoice_items').insert(rows);
+  }
+
+  res.status(201).json(invoice);
+});
+
+// PATCH /api/invoices/:id/status
+router.patch('/:id/status', auth, async (req, res) => {
+  const { status } = req.body;
+  if (!['paid', 'unpaid'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status' });
+  }
+
+  const { data, error } = await supabase
+    .from('invoices')
+    .update({ status })
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE /api/invoices/:id
+router.delete('/:id', auth, async (req, res) => {
+  await supabase
+    .from('invoices')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id);
+  res.json({ message: 'Deleted' });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Clients Route  (backend/src/routes/clients.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+router.get('/', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('user_id', req.user.id)
+    .order('name');
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+router.post('/', auth, async (req, res) => {
+  const { name, email, address } = req.body;
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({ user_id: req.user.id, name, email, address })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+router.delete('/:id', auth, async (req, res) => {
+  await supabase
+    .from('clients')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id);
+  res.json({ message: 'Deleted' });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — PDF Route  (backend/src/routes/pdf.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { generateInvoicePDF } = require('../services/pdfService');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+router.get('/:id', auth, async (req, res) => {
+  const { data: invoice, error } = await supabase
+    .from('invoices')
+    .select('*, clients(*), invoice_items(*)')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+
+  if (error || !invoice) return res.status(404).json({ error: 'Not found' });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${invoice.invoice_no}.pdf"`
+  );
+
+  generateInvoicePDF(invoice, res);
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — PDF Service  (backend/src/services/pdfService.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const PDFDocument = require('pdfkit');
+
+function generateInvoicePDF(invoice, stream) {
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(stream);
+
+  // Header
+  doc.fontSize(24).font('Helvetica-Bold').text('INVOICE', { align: 'right' });
+  doc.fontSize(10).font('Helvetica')
+     .text(`Invoice No: ${invoice.invoice_no}`, { align: 'right' })
+     .text(`Date: ${new Date(invoice.created_at).toLocaleDateString()}`, { align: 'right' })
+     .text(`Due: ${invoice.due_date || 'N/A'}`, { align: 'right' });
+
+  doc.moveDown(2);
+
+  // Bill To
+  doc.fontSize(12).font('Helvetica-Bold').text('Bill To:');
+  doc.fontSize(10).font('Helvetica')
+     .text(invoice.clients?.name || 'Unknown Client')
+     .text(invoice.clients?.email || '');
+
+  doc.moveDown(2);
+
+  // Table header
+  const tableTop = doc.y;
+  const col = { desc: 50, qty: 320, price: 390, total: 460 };
+
+  doc.font('Helvetica-Bold').fontSize(10);
+  doc.text('Description', col.desc, tableTop);
+  doc.text('Qty',         col.qty,  tableTop);
+  doc.text('Price',       col.price, tableTop);
+  doc.text('Total',       col.total, tableTop);
+
+  doc.moveTo(50, doc.y + 5).lineTo(550, doc.y + 5).stroke();
+  doc.moveDown(0.5);
+
+  // Line items
+  doc.font('Helvetica').fontSize(10);
+  (invoice.invoice_items || []).forEach(item => {
+    const y = doc.y;
+    const lineTotal = (item.quantity * item.price).toFixed(2);
+    doc.text(item.description, col.desc,  y, { width: 260 });
+    doc.text(String(item.quantity),        col.qty,   y);
+    doc.text(`$${item.price.toFixed(2)}`,  col.price, y);
+    doc.text(`$${lineTotal}`,              col.total, y);
+    doc.moveDown(1);
+  });
+
+  doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+  doc.moveDown(0.5);
+
+  // Total
+  doc.font('Helvetica-Bold').fontSize(12)
+     .text(`Total: $${invoice.amount.toFixed(2)}`, { align: 'right' });
+
+  // Status badge
+  doc.moveDown();
+  doc.fontSize(10).font('Helvetica')
+     .fillColor(invoice.status === 'paid' ? 'green' : 'red')
+     .text(`Status: ${invoice.status.toUpperCase()}`, { align: 'right' });
+
+  // Notes
+  if (invoice.notes) {
+    doc.moveDown(2).fillColor('black').font('Helvetica-Bold').text('Notes:');
+    doc.font('Helvetica').text(invoice.notes);
+  }
+
+  doc.end();
+}
+
+module.exports = { generateInvoicePDF };
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — package.json  (frontend/package.json)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "mini-invoice-frontend",
+  "version": "1.0.0",
+  "scripts": {
+    "dev":   "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "react":     "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer":  "^10.4.16",
+    "postcss":       "^8.4.32",
+    "tailwindcss":   "^3.4.0",
+    "vite":          "^5.0.8"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — vite.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:4000'
+    }
+  }
+});
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — tailwind.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50:  '#f0f9ff',
+          500: '#0ea5e9',
+          600: '#0284c7',
+          700: '#0369a1',
+        }
+      }
+    }
+  },
+  plugins: []
+};
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — index.css  (src/index.css)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Supabase client  (src/api/index.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+export async function apiFetch(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization:  `Bearer ${token}`,
+      ...(options.headers || {})
+    }
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Request failed');
+  }
+
+  return res.json();
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — .env  (frontend/.env)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — AuthContext  (src/context/AuthContext.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../api';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setUser(session?.user ?? null)
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signIn = (email, password) =>
+    supabase.auth.signInWithPassword({ email, password });
+
+  const signUp = (email, password) =>
+    supabase.auth.signUp({ email, password });
+
+  const signOut = () => supabase.auth.signOut();
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — App.jsx  (src/App.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login         from './pages/Login';
+import Dashboard     from './pages/Dashboard';
+import NewInvoice    from './pages/NewInvoice';
+import InvoiceDetail from './pages/InvoiceDetail';
+import Navbar        from './components/Navbar';
+
+function PrivateRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+  return user ? children : <Navigate to="/login" replace />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={
+            <PrivateRoute>
+              <Navbar />
+              <Dashboard />
+            </PrivateRoute>
+          } />
+          <Route path="/invoices/new" element={
+            <PrivateRoute>
+              <Navbar />
+              <NewInvoice />
+            </PrivateRoute>
+          } />
+          <Route path="/invoices/:id" element={
+            <PrivateRoute>
+              <Navbar />
+              <InvoiceDetail />
+            </PrivateRoute>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — main.jsx  (src/main.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Navbar  (src/components/Navbar.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function Navbar() {
+  const { user, signOut } = useAuth();
+
+  return (
+    <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+      <Link to="/" className="text-xl font-bold text-sky-600">
+        InvoiceLite
+      </Link>
+      <div className="flex items-center gap-4">
+        <Link
+          to="/invoices/new"
+          className="bg-sky-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-sky-700 transition"
+        >
+          + New Invoice
+        </Link>
+        <span className="text-sm text-gray-500">{user?.email}</span>
+        <button
+          onClick={signOut}
+          className="text-sm text-gray-600 hover:text-red-500 transition"
+        >
+          Sign out
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Login Page  (src/pages/Login.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function Login() {
+  const { signIn, signUp } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError]       = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    const fn = isSignUp ? signUp : signIn;
+    const { error: err } = await fn(email, password);
+    if (err) return setError(err.message);
+    navigate('/');
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 w-full max-w-sm">
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">InvoiceLite</h1>
+        <p className="text-sm text-gray-500 mb-6">
+          {isSignUp ? 'Create your account' : 'Sign in to continue'}
+        </p>
+
+        {error && (
+          <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-sky-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-sky-700 transition"
+          >
+            {isSignUp ? 'Create account' : 'Sign in'}
+          </button>
+        </form>
+
+        <p className="text-sm text-center text-gray-500 mt-4">
+          {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+          {' '}
+          <button
+            onClick={() => setIsSignUp(v => !v)}
+            className="text-sky-600 hover:underline"
+          >
+            {isSignUp ? 'Sign in' : 'Sign up'}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Dashboard  (src/pages/Dashboard.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { apiFetch } from '../api';
+
+export default function Dashboard() {
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    apiFetch('/invoices')
+      .then(setInvoices)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const paid   = invoices.filter(i => i.status === 'paid');
+  const unpaid = invoices.filter(i => i.status === 'unpaid');
+  const total  = invoices.reduce((s, i) => s + Number(i.amount), 0);
+
+  if (loading) return <div className="p-8 text-center text-gray-500">Loading...</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-8">
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <StatCard label="Total invoices" value={invoices.length} color="bg-sky-50 text-sky-700" />
+        <StatCard label="Paid"   value={paid.length}   color="bg-green-50 text-green-700" />
+        <StatCard label="Unpaid" value={unpaid.length} color="bg-amber-50 text-amber-700" />
+      </div>
+
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Invoices</h2>
+        <span className="text-sm text-gray-500">
+          Total revenue: <strong>${total.toFixed(2)}</strong>
+        </span>
+      </div>
+
+      {invoices.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">
+          <p className="mb-4">No invoices yet.</p>
+          <Link
+            to="/invoices/new"
+            className="bg-sky-600 text-white px-5 py-2 rounded-lg text-sm hover:bg-sky-700"
+          >
+            Create your first invoice
+          </Link>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600 text-left">
+                <th className="px-4 py-3 font-medium">Invoice #</th>
+                <th className="px-4 py-3 font-medium">Client</th>
+                <th className="px-4 py-3 font-medium">Amount</th>
+                <th className="px-4 py-3 font-medium">Due</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {invoices.map(inv => (
+                <tr key={inv.id} className="hover:bg-gray-50 transition">
+                  <td className="px-4 py-3">
+                    <Link to={`/invoices/${inv.id}`} className="text-sky-600 hover:underline font-mono">
+                      {inv.invoice_no}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{inv.clients?.name ?? '—'}</td>
+                  <td className="px-4 py-3 font-medium">${Number(inv.amount).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-gray-500">{inv.due_date ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={inv.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, color }) {
+  return (
+    <div className={`rounded-xl p-5 ${color}`}>
+      <p className="text-3xl font-bold">{value}</p>
+      <p className="text-sm mt-1 opacity-80">{label}</p>
+    </div>
+  );
+}
+
+function StatusBadge({ status }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+      ${status === 'paid'
+        ? 'bg-green-100 text-green-700'
+        : 'bg-amber-100 text-amber-700'}`}>
+      {status}
+    </span>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — New Invoice  (src/pages/NewInvoice.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../api';
+
+const emptyItem = () => ({ description: '', quantity: 1, price: '' });
+
+export default function NewInvoice() {
+  const navigate = useNavigate();
+  const [clients, setClients]     = useState([]);
+  const [clientId, setClientId]   = useState('');
+  const [newClient, setNewClient] = useState({ name: '', email: '' });
+  const [addingClient, setAddingClient] = useState(false);
+  const [dueDate, setDueDate]     = useState('');
+  const [notes, setNotes]         = useState('');
+  const [items, setItems]         = useState([emptyItem()]);
+  const [error, setError]         = useState('');
+  const [saving, setSaving]       = useState(false);
+
+  useEffect(() => {
+    apiFetch('/clients').then(setClients);
+  }, []);
+
+  function addItem() {
+    setItems(prev => [...prev, emptyItem()]);
+  }
+
+  function removeItem(i) {
+    setItems(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  function updateItem(i, field, value) {
+    setItems(prev => prev.map((item, idx) =>
+      idx === i ? { ...item, [field]: value } : item
+    ));
+  }
+
+  const subtotal = items.reduce(
+    (s, i) => s + (Number(i.quantity) * Number(i.price) || 0), 0
+  );
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+
+    try {
+      let finalClientId = clientId;
+
+      if (addingClient) {
+        const client = await apiFetch('/clients', {
+          method: 'POST',
+          body: JSON.stringify(newClient)
+        });
+        finalClientId = client.id;
+      }
+
+      if (!finalClientId) throw new Error('Please select or create a client.');
+
+      const invoice = await apiFetch('/invoices', {
+        method: 'POST',
+        body: JSON.stringify({
+          client_id: finalClientId,
+          due_date:  dueDate || null,
+          notes,
+          items: items.map(i => ({
+            description: i.description,
+            quantity:    Number(i.quantity),
+            price:       Number(i.price)
+          }))
+        })
+      });
+
+      navigate(`/invoices/${invoice.id}`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">New Invoice</h1>
+
+      {error && (
+        <div className="bg-red-50 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+
+        {/* Client */}
+        <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Client</h2>
+
+          {!addingClient ? (
+            <div className="flex gap-2">
+              <select
+                value={clientId}
+                onChange={e => setClientId(e.target.value)}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="">Select a client…</option>
+                {clients.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setAddingClient(true)}
+                className="text-sm text-sky-600 px-3 border border-sky-200 rounded-lg hover:bg-sky-50"
+              >
+                + New
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <input
+                placeholder="Client name"
+                value={newClient.name}
+                onChange={e => setNewClient(p => ({ ...p, name: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+              <input
+                placeholder="Client email (optional)"
+                value={newClient.email}
+                onChange={e => setNewClient(p => ({ ...p, email: e.target.value }))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+              <button
+                type="button"
+                onClick={() => setAddingClient(false)}
+                className="text-sm text-gray-500 hover:underline"
+              >
+                ← Back to list
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Details */}
+        <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Details</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Due date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Notes</label>
+              <input
+                placeholder="Optional notes…"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Line items */}
+        <section className="bg-white rounded-xl border border-gray-200 p-5">
+          <h2 className="text-sm font-semibold text-gray-700 mb-3">Line items</h2>
+          <div className="space-y-2">
+            {items.map((item, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <input
+                  placeholder="Description"
+                  value={item.description}
+                  onChange={e => updateItem(i, 'description', e.target.value)}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  required
+                />
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Qty"
+                  value={item.quantity}
+                  onChange={e => updateItem(i, 'quantity', e.target.value)}
+                  className="w-16 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  required
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Price"
+                  value={item.price}
+                  onChange={e => updateItem(i, 'price', e.target.value)}
+                  className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  required
+                />
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(i)}
+                    className="text-gray-400 hover:text-red-500 text-lg leading-none"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addItem}
+            className="mt-3 text-sm text-sky-600 hover:underline"
+          >
+            + Add line item
+          </button>
+
+          <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
+            <span className="text-sm font-semibold text-gray-900">
+              Total: ${subtotal.toFixed(2)}
+            </span>
+          </div>
+        </section>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full bg-sky-600 text-white py-2.5 rounded-xl font-medium hover:bg-sky-700 transition disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Create invoice'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Invoice Detail  (src/pages/InvoiceDetail.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { apiFetch, supabase } from '../api';
+
+export default function InvoiceDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [invoice, setInvoice] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch(`/invoices/${id}`)
+      .then(setInvoice)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  async function toggleStatus() {
+    const next = invoice.status === 'paid' ? 'unpaid' : 'paid';
+    const updated = await apiFetch(`/invoices/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: next })
+    });
+    setInvoice(prev => ({ ...prev, status: updated.status }));
+  }
+
+  async function downloadPDF() {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const res = await fetch(`/api/pdf/${id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${invoice.invoice_no}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function deleteInvoice() {
+    if (!confirm('Delete this invoice?')) return;
+    await apiFetch(`/invoices/${id}`, { method: 'DELETE' });
+    navigate('/');
+  }
+
+  if (loading) return <div className="p-8 text-center text-gray-500">Loading…</div>;
+  if (!invoice) return <div className="p-8 text-center text-red-500">Invoice not found.</div>;
+
+  const subtotal = (invoice.invoice_items || []).reduce(
+    (s, i) => s + Number(i.quantity) * Number(i.price), 0
+  );
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 font-mono">{invoice.invoice_no}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Created {new Date(invoice.created_at).toLocaleDateString()}
+            {invoice.due_date && ` · Due ${invoice.due_date}`}
+          </p>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-sm font-medium
+          ${invoice.status === 'paid'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-amber-100 text-amber-700'}`}>
+          {invoice.status}
+        </span>
+      </div>
+
+      {/* Client */}
+      <section className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Bill to</h2>
+        <p className="font-medium text-gray-900">{invoice.clients?.name}</p>
+        <p className="text-sm text-gray-500">{invoice.clients?.email}</p>
+      </section>
+
+      {/* Line items */}
+      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-gray-600 text-left">
+              <th className="px-4 py-3 font-medium">Description</th>
+              <th className="px-4 py-3 font-medium text-right">Qty</th>
+              <th className="px-4 py-3 font-medium text-right">Price</th>
+              <th className="px-4 py-3 font-medium text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {(invoice.invoice_items || []).map(item => (
+              <tr key={item.id}>
+                <td className="px-4 py-3 text-gray-700">{item.description}</td>
+                <td className="px-4 py-3 text-right text-gray-500">{item.quantity}</td>
+                <td className="px-4 py-3 text-right text-gray-500">${Number(item.price).toFixed(2)}</td>
+                <td className="px-4 py-3 text-right font-medium">
+                  ${(item.quantity * item.price).toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-gray-50">
+              <td colSpan="3" className="px-4 py-3 text-right font-semibold text-gray-700">Total</td>
+              <td className="px-4 py-3 text-right font-bold text-gray-900">${subtotal.toFixed(2)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      {/* Notes */}
+      {invoice.notes && (
+        <section className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Notes</h2>
+          <p className="text-sm text-gray-700">{invoice.notes}</p>
+        </section>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-3">
+        <button
+          onClick={toggleStatus}
+          className={`flex-1 py-2.5 rounded-xl text-sm font-medium transition
+            ${invoice.status === 'paid'
+              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+              : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+        >
+          {invoice.status === 'paid' ? 'Mark as unpaid' : 'Mark as paid'}
+        </button>
+        <button
+          onClick={downloadPDF}
+          className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-sky-600 text-white hover:bg-sky-700 transition"
+        >
+          Download PDF
+        </button>
+        <button
+          onClick={deleteInvoice}
+          className="px-4 py-2.5 rounded-xl text-sm font-medium text-red-500 border border-red-200 hover:bg-red-50 transition"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  README.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# InvoiceLite — Mini Invoice SaaS
+
+A simple, clean invoicing tool for freelancers.
+
+## Setup
+
+### 1. Supabase
+- Create a project at supabase.com
+- Run `supabase/schema.sql` in the SQL editor
+- Copy your Project URL, anon key, and service role key
+
+### 2. Backend
+  cd backend
+  npm install
+  # Fill in backend/.env
+  npm run dev           # runs on :4000
+
+### 3. Frontend
+  cd frontend
+  npm install
+  # Fill in frontend/.env
+  npm run dev           # runs on :5173
+
+## Features
+- Email/password auth via Supabase
+- Create invoices with line items
+- Manage clients
+- Mark paid / unpaid
+- Download PDF
+- Free plan: 3 invoices/month
+- Paid plan: unlimited
+
+## Monetization
+Flip a user's `plan` column from 'free' to 'paid' after a
+Stripe Checkout session completes. Add a Stripe webhook to
+the backend to automate this.
+
+================================================================

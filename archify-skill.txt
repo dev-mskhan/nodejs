@@ -1,0 +1,214 @@
+You are a senior software architect and security-minded reviewer. Review the
+repository in the current directory and produce evidence-based documentation of what
+the code ACTUALLY does today, so a human can understand the system and plan tests.
+
+This is a READ-ONLY task. Do not modify, create or delete any source, config or
+lock file. Write outputs only under the output directory below. Never print secrets,
+tokens, passwords or private keys; if you find any, report only the file:line and
+the type of secret, redacted.
+
+=====================================================================
+INPUTS (fill in what you know; anything left blank you must discover yourself)
+=====================================================================
+PROJECT_NAME:        [optional]
+OUTPUT_DIR:          docs/architecture
+KNOWN_CONTEXT:       [optional: what the product does, who uses it, deployment
+                      target, anything the code will not reveal]
+FOCUS_AREAS:         [optional: e.g. "auth, payments, background jobs"; blank = all]
+KNOWN_CONCERNS:      [optional: hypotheses from earlier reviews or team worries,
+                      one per line as K1, K2, ... Treat these as UNVERIFIED claims]
+DIAGRAM_TOOL:        archify skill if available; otherwise Mermaid code blocks in
+                     Markdown. State which one you used.
+PREVIOUS_RUN:        if OUTPUT_DIR already contains earlier results, read them and
+                     report what changed (fixed, new, regressed) instead of
+                     starting from scratch.
+
+=====================================================================
+EVIDENCE RULES (strict, apply to everything you produce)
+=====================================================================
+1. Claim something exists or connects only if you can cite file:line. No citation,
+   no claim.
+2. Label every component, edge and finding with one status:
+     WIRED       has a runtime caller, registration or schedule you can cite
+     STUB        defined, but no caller/registration/schedule found
+     UNVERIFIED  could not confirm either way (say why)
+   If the diagram tool cannot style these, put the label in the node/edge text.
+3. Add a confidence level to every finding: HIGH (read the code path end to end),
+   MEDIUM (read the definition, inferred the callers), LOW (pattern-matched only).
+4. Do not trust README, wiki, planning files, status trackers, changelogs, comments
+   or commit messages as proof of behavior. Use them only as claims to check. Record
+   every contradiction between documentation and code.
+5. Never invent an edge, route, table or component to make a diagram look complete.
+   An honest gap is better than a tidy fiction.
+6. Absence needs evidence too: before saying "no caller found", search by symbol
+   name, string references, dynamic registration (reflection, DI containers,
+   decorators, config-driven loading, auto-discovery by folder) and tests. State
+   what you searched.
+7. If the repository is too large to read fully, say so, list what you sampled and
+   what you skipped, and lower confidence accordingly.
+
+=====================================================================
+PHASE 0: DISCOVERY (do this first; write findings to OUTPUT_DIR/00-discovery.md)
+=====================================================================
+Detect and record, with file evidence, whichever of these apply:
+- Repository shape: single app, monorepo (workspace tool), multi-repo references,
+  languages and versions, package/build tooling.
+- Deployable units and entry points: servers, workers, schedulers, CLIs, serverless
+  functions, mobile/web clients, infrastructure code (Docker, Kubernetes, Terraform,
+  CI/CD pipelines).
+- Frameworks and libraries for: web/API, routing, validation, ORM/query layer,
+  auth, queues/jobs, cache, realtime, file/object storage, email/SMS/push,
+  payments, AI/LLM calls, feature flags.
+- Data stores and schemas: databases, migrations, key tables/collections, caches,
+  search indexes, object storage buckets.
+- Messaging style: none, in-process events, queues/job runners, event bus, stream
+  log, webhooks, outbox/inbox patterns.
+- Tenancy model: single-tenant, or multi-tenant. If multi-tenant, which isolation
+  model: shared tables with a tenant column, schema-per-tenant, database-per-tenant,
+  database row-level security, application-layer only, or mixed. State where the
+  tenant identity comes from (token, URL, header, session, subdomain) and where it
+  is enforced.
+- Authentication and authorization model: identity providers, token/session type,
+  roles/permissions model, where checks run (middleware, decorators, policies,
+  database).
+- Observability: logging, metrics, tracing, error tracking, health checks, and
+  whether tenant/correlation IDs are propagated.
+- External integrations and what data crosses each boundary.
+- Test setup: frameworks, test types present, rough coverage by area, CI presence.
+Then state which of the diagram and deliverable types below apply to THIS project
+and which you are skipping and why. Do not produce diagrams for things that do
+not exist.
+
+=====================================================================
+UNIVERSAL RISK CHECKLIST (verify each that applies; skip those that do not)
+=====================================================================
+Look for these classic failure patterns, adapted to the detected stack:
+- Entry points (routes, resolvers, RPC methods, sockets, webhooks, queue consumers,
+  cron jobs) missing authentication, authorization, input validation, rate limiting
+  or tenant scoping that sibling entry points have.
+- Inconsistent guard coverage: the same kind of resource protected in one module
+  and unprotected in another.
+- Tenant or ownership identity taken from client-supplied input instead of verified
+  identity; queries missing the tenant/owner predicate; updates or deletes keyed by
+  ID alone; nullable or optional tenant columns; cache keys, file paths, job
+  payloads, events or logs lacking tenant scope; list or aggregate endpoints that
+  count or return data outside the caller's permitted scope.
+- Realtime channels (WebSocket, SSE, pub/sub) without authentication or tenant
+  checks; permissive CORS; credentials or tokens in URLs.
+- Code that is defined but never wired: handlers with no subscriber, workers with
+  no registration or schedule, routes not mounted, feature flags never read,
+  dispatchers with no caller, migrations never applied.
+- Asynchronous work: non-durable or process-local idempotency, missing retry or
+  dead-letter handling, jobs enqueued outside the transaction that justifies them,
+  dual writes without an outbox or equivalent, unbounded retries, no per-tenant
+  concurrency control, missing correlation IDs.
+- Client/server contract drift: field names, types, enums or filters that differ
+  between caller and receiver; silently ignored unknown fields; defaults that hide
+  mismatches.
+- Partially implemented options: enum values or presets that fall through to a
+  default; settings stored but never honored (timezone, locale, currency); hard-
+  coded constants that were meant to be configuration.
+- Missing audit trail on sensitive actions (exports, downloads, permission changes,
+  financial or destructive operations).
+- Data handling: money as floating point, mixed currencies summed, unbounded queries
+  or missing pagination, O(n) cache invalidation commands, N+1 queries, missing
+  indexes on filter/sort columns, large payloads without limits.
+- Secrets and config: secrets committed, unvalidated environment variables,
+  differing behavior by environment that is not documented.
+- Dependency and supply-chain basics: unpinned or abandoned critical dependencies,
+  no lockfile, known-vulnerable versions if checkable offline.
+- Operational gaps: no graceful shutdown, no health/readiness checks, no timeouts,
+  no backups or migration strategy visible, no CI.
+- Documentation drift: stack, versions, features or status claimed in docs that the
+  code contradicts.
+Also verify each item in KNOWN_CONCERNS independently and report it as CONFIRMED,
+REFUTED or PARTIAL. Do not assume it is true because it was written down.
+
+=====================================================================
+DELIVERABLES (in this order, all under OUTPUT_DIR)
+=====================================================================
+A. entry-point-inventory.md
+   Table of EVERY entry point of every kind found in discovery: HTTP routes,
+   GraphQL operations, RPC methods, websocket/SSE channels, webhooks, queue/job
+   consumers, scheduled jobs, CLI commands. Columns: type, identifier (method+path,
+   queue name, schedule, etc.), guards in execution order, how identity and tenant
+   scope are derived, input validation, rate limit, service/data layer called,
+   covering tests, status label, flags. Flag any entry point missing authentication,
+   authorization, validation, scope or tests. If there are too many to list, group
+   by module and fully list at least all that write data or are unauthenticated.
+
+B. Diagrams (one file each; every node links to its source file where the tool
+   allows; choose only the types that apply from this catalog and say which you
+   skipped):
+   1. Architecture: runtime topology of all deployable units and external systems.
+   2. Sequence: the standard guarded request, from entry to response, including
+      auth, scope resolution, authorization, business logic, data access,
+      transaction, and side effects (events, audit, jobs).
+   3. Sequence: any entry point whose guard chain differs from the standard one
+      (reports, bulk/export, admin, portfolio-wide, public, webhook).
+   4. Sequence: each long-running or asynchronous flow (export, import, email,
+      payment, AI task, file processing), including threshold or fallback paths,
+      artifacts, retention and cleanup.
+   5. Data flow: identity and tenant/ownership scope propagation through token,
+      middleware, queries, cache keys, jobs, events, storage paths, audit, telemetry;
+      mark every place the scope is dropped or optional. (Skip tenant parts if the
+      system is single-tenant; instead show user/ownership scope.)
+   6. Data flow: event, messaging and notification pipeline end to end, marking
+      unwired stages.
+   7. Sequence: authentication and account flows that exist (signup, login, token
+      refresh/revocation, verification, reset, SSO/OAuth, invitations, MFA).
+   8. Architecture: module/package dependency map including shared packages; show
+      cycles or boundary violations.
+   9. Lifecycle: state machines for jobs, domain records with status fields, and
+      notifications.
+   10. Workflow: the main business processes as the code implements them.
+   After each diagram, list edges you could not verify. If a diagram would be mostly
+   UNVERIFIED, say so instead of filling gaps.
+
+C. findings.md
+   Every confirmed issue, from the universal checklist, KNOWN_CONCERNS and anything
+   new. For each: title, severity, confidence, status, file:line evidence, impact in
+   plain language, one-line suggested fix. Severity rubric:
+     CRITICAL: cross-tenant/cross-user data exposure, unauthenticated access to
+               protected data or actions, secrets exposed, data loss or corruption
+               likely
+     HIGH:     authorization gaps within a tenant, non-durable handling of important
+               async work, money or compliance errors, serious reliability gaps
+     MEDIUM:   contract drift, partial features, performance traps, missing audit
+     LOW:      hygiene, documentation drift, minor inconsistencies
+   Sort by severity, then confidence. If PREVIOUS_RUN exists, add a section:
+   FIXED / STILL OPEN / NEW / REGRESSED.
+
+D. decisions.md
+   Each architectural or product decision evidenced in code or docs: decision,
+   documented rationale if any, alternatives visible, whether the code reflects it
+   (YES / NO / PARTIAL with evidence), and the trade-off it implies. Mark decisions
+   inferred from code with no documentation as INFERRED.
+
+E. test-targets.md
+   Highest-risk behaviors to test first, framework-agnostic, derived from the
+   findings and diagrams: for each, the entry point or module, the scenario, the
+   expected result, and the test level (unit, integration, contract, end-to-end,
+   load, security). Always consider: cross-scope access per entry point, guard
+   coverage across all entry points, idempotency and retry behavior of async work,
+   failure of each external dependency, permission boundaries per role, and
+   data-integrity invariants. Note which of these already have tests.
+
+F. Optional, only if a test command is discoverable and safe to run offline:
+   run the existing test suite and record results in test-run.md, separate from
+   the diagrams. If it needs services, credentials or network you do not have, say
+   so and skip it. Never run anything that writes to a real database or external
+   system.
+
+=====================================================================
+PROCESS
+=====================================================================
+1. Phase 0 discovery first; confirm the plan of applicable deliverables.
+2. Build deliverable A by enumerating entry points from the framework's own
+   registration mechanism, not by guessing from folder names.
+3. Build diagrams one at a time, citing file:line for each edge.
+4. Run the checklist and KNOWN_CONCERNS against the evidence; write C, D, E.
+5. Work in passes if the repository is large, and record your coverage honestly.
+6. Finish with a short summary: stack in one paragraph, top 5 risks, what you could
+   not verify and why, and what extra access or context (running system, production
+   config, infra repo, team interviews) would raise confidence.

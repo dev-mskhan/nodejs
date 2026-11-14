@@ -1,0 +1,77 @@
+🧠 Project Overview
+RentAnything is a full-featured platform where users can rent items from other users instead of buying them. It's a peer-to-peer rental system — users can be both renters and lenders.
+
+💡 Key Features
+👥 User Roles
+Lender (someone listing their item for rent)
+
+Renter (someone renting that item)
+
+📦 Product Listings
+Upload product with:
+
+Name, images, description
+
+Daily/weekly rental price
+
+Availability calendar
+
+Deposit amount (optional)
+
+Availability should reflect actual rented-out dates (no double bookings)
+
+📆 Booking System
+Choose start & end date
+
+Calculate rental price
+
+Prevent overlapping bookings
+
+Send confirmation + payment
+
+💳 Payment & Security
+Integrate Stripe or Razorpay for payments
+
+Option to hold a security deposit
+
+Show cancellation policy
+
+⭐ User Reviews & Ratings
+After a rental is complete, renter can review the item and the lender
+
+Lender can also review the renter
+
+📍 Location-Based Search
+Users can filter by city, distance, category
+
+Map view with pins (Google Maps or Leaflet)
+
+🧾 My Rentals Dashboard
+For Renters:
+
+Upcoming & past rentals
+
+Cancel/Extend options
+
+For Lenders:
+
+Manage item listings
+
+View bookings
+
+Accept or decline requests (optional manual flow)
+
+🔐 Authentication
+JWT-based login/signup
+
+Google login (optional)
+
+Email verification (optional)
+
+🧱 Tech Stack (MERN)
+
+Layer	Tech	Role
+Frontend	React.js + Tailwind/Chakra UI	Build UI pages (homepage, item detail, calendar)
+Backend	Node.js + Express	RESTful APIs for items, users, bookings
+Database	MongoDB	Store users, products, bookings, reviews
+Cloud	Cloudinary (for image uploads)	Store item photos

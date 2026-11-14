@@ -1,0 +1,1413 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                         DEVLINK HUB — FULL PROJECT                         ║
+║              React + Vite + Tailwind | Express | Supabase                  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+# ── ROOT ──────────────────────────────────────────────────────────────────────
+mkdir devlinkhub
+cd devlinkhub
+
+# ── BACKEND ───────────────────────────────────────────────────────────────────
+mkdir backend
+cd backend
+mkdir routes, middleware, lib
+
+New-Item index.js, .env.example -ItemType File
+New-Item lib\supabaseAdmin.js -ItemType File
+New-Item middleware\auth.js -ItemType File
+New-Item routes\profile.js, routes\links.js, routes\analytics.js -ItemType File
+
+npm init -y
+npm install @supabase/supabase-js cors dotenv express express-rate-limit
+npm install --save-dev nodemon
+
+cd ..
+
+# ── FRONTEND ──────────────────────────────────────────────────────────────────
+npm create vite@latest frontend -- --template react
+cd frontend
+
+mkdir src\components, src\pages, src\lib, src\context
+
+New-Item src\components\Navbar.jsx,
+         src\components\LinkCard.jsx,
+         src\components\ThemePicker.jsx,
+         src\components\AnalyticsChart.jsx -ItemType File
+
+New-Item src\pages\Home.jsx,
+         src\pages\Login.jsx,
+         src\pages\Register.jsx,
+         src\pages\Dashboard.jsx,
+         src\pages\EditProfile.jsx,
+         src\pages\PublicProfile.jsx -ItemType File
+
+New-Item src\lib\supabaseClient.js,
+         src\lib\api.js -ItemType File
+
+New-Item src\context\AuthContext.jsx -ItemType File
+
+New-Item .env.example -ItemType File
+
+npm install @supabase/supabase-js axios react-router-dom recharts
+npm install --save-dev tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+cd ..
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PROJECT STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+devlinkhub/
+├── frontend/                   ← React + Vite + Tailwind
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── LinkCard.jsx
+│   │   │   ├── ThemePicker.jsx
+│   │   │   └── AnalyticsChart.jsx
+│   │   ├── pages/
+│   │   │   ├── Home.jsx
+│   │   │   ├── Login.jsx
+│   │   │   ├── Register.jsx
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── EditProfile.jsx
+│   │   │   └── PublicProfile.jsx
+│   │   ├── lib/
+│   │   │   ├── supabaseClient.js
+│   │   │   └── api.js
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   └── package.json
+│
+└── backend/                    ← Node.js + Express
+    ├── routes/
+    │   ├── profile.js
+    │   ├── links.js
+    │   └── analytics.js
+    ├── middleware/
+    │   └── auth.js
+    ├── lib/
+    │   └── supabaseAdmin.js
+    ├── index.js
+    ├── .env.example
+    └── package.json
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SUPABASE SQL — Run in Supabase SQL Editor
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+-- Enable UUID extension
+create extension if not exists "uuid-ossp";
+
+-- PROFILES TABLE
+create table profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  username text unique not null,
+  full_name text,
+  bio text,
+  avatar_url text,
+  theme text default 'default',
+  github_username text,
+  created_at timestamp with time zone default now()
+);
+
+-- LINKS TABLE
+create table links (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references auth.users(id) on delete cascade,
+  title text not null,
+  url text not null,
+  icon text,
+  clicks integer default 0,
+  position integer default 0,
+  created_at timestamp with time zone default now()
+);
+
+-- ANALYTICS TABLE
+create table analytics (
+  id uuid primary key default uuid_generate_v4(),
+  profile_id uuid references profiles(id) on delete cascade,
+  event_type text not null, -- 'view' or 'click'
+  link_id uuid references links(id) on delete set null,
+  ip_hash text,
+  created_at timestamp with time zone default now()
+);
+
+-- ROW LEVEL SECURITY
+alter table profiles enable row level security;
+alter table links enable row level security;
+alter table analytics enable row level security;
+
+-- Profiles policies
+create policy "Public profiles are viewable by everyone"
+  on profiles for select using (true);
+
+create policy "Users can insert own profile"
+  on profiles for insert with check (auth.uid() = id);
+
+create policy "Users can update own profile"
+  on profiles for update using (auth.uid() = id);
+
+-- Links policies
+create policy "Links are viewable by everyone"
+  on links for select using (true);
+
+create policy "Users can manage own links"
+  on links for all using (auth.uid() = user_id);
+
+-- Analytics policies
+create policy "Anyone can insert analytics"
+  on analytics for insert with check (true);
+
+create policy "Users can view own analytics"
+  on analytics for select using (
+    profile_id in (select id from profiles where id = auth.uid())
+  );
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/package.json
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "devlinkhub-backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/.env.example
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PORT=5000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+FRONTEND_URL=http://localhost:5173
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/index.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+
+const profileRoutes = require('./routes/profile');
+const linkRoutes = require('./routes/links');
+const analyticsRoutes = require('./routes/analytics');
+
+const app = express();
+
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(express.json());
+
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+app.use(limiter);
+
+app.use('/api/profile', profileRoutes);
+app.use('/api/links', linkRoutes);
+app.use('/api/analytics', analyticsRoutes);
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/lib/supabaseAdmin.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+module.exports = supabase;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/middleware/auth.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const supabase = require('../lib/supabaseAdmin');
+
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing or invalid token' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  req.user = user;
+  next();
+};
+
+module.exports = authenticate;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/routes/profile.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express = require('express');
+const router = express.Router();
+const supabase = require('../lib/supabaseAdmin');
+const authenticate = require('../middleware/auth');
+
+// GET public profile by username
+router.get('/:username', async (req, res) => {
+  const { username } = req.params;
+
+  const { data: profile, error } = await supabase
+    .from('profiles')
+    .select('*, links(*)')
+    .eq('username', username)
+    .single();
+
+  if (error || !profile) {
+    return res.status(404).json({ error: 'Profile not found' });
+  }
+
+  // Sort links by position
+  profile.links.sort((a, b) => a.position - b.position);
+
+  res.json(profile);
+});
+
+// GET current user's own profile
+router.get('/', authenticate, async (req, res) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, links(*)')
+    .eq('id', req.user.id)
+    .single();
+
+  if (error) return res.status(404).json({ error: 'Profile not found' });
+  res.json(data);
+});
+
+// POST create profile
+router.post('/', authenticate, async (req, res) => {
+  const { username, full_name, bio, theme, github_username, avatar_url } = req.body;
+
+  if (!username || !/^[a-zA-Z0-9_-]{3,30}$/.test(username)) {
+    return res.status(400).json({ error: 'Invalid username (3-30 chars, letters/numbers/_/-)' });
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert([{ id: req.user.id, username, full_name, bio, theme, github_username, avatar_url }])
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'Username already taken' });
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.status(201).json(data);
+});
+
+// PUT update profile
+router.put('/', authenticate, async (req, res) => {
+  const { full_name, bio, theme, github_username, avatar_url } = req.body;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ full_name, bio, theme, github_username, avatar_url })
+    .eq('id', req.user.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/routes/links.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express = require('express');
+const router = express.Router();
+const supabase = require('../lib/supabaseAdmin');
+const authenticate = require('../middleware/auth');
+
+const FREE_LINK_LIMIT = 5;
+
+// GET all links for current user
+router.get('/', authenticate, async (req, res) => {
+  const { data, error } = await supabase
+    .from('links')
+    .select('*')
+    .eq('user_id', req.user.id)
+    .order('position', { ascending: true });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// POST create link
+router.post('/', authenticate, async (req, res) => {
+  const { title, url, icon } = req.body;
+
+  // Check free tier limit
+  const { count } = await supabase
+    .from('links')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', req.user.id);
+
+  if (count >= FREE_LINK_LIMIT) {
+    return res.status(403).json({ error: 'Free plan limited to 5 links. Upgrade for unlimited.' });
+  }
+
+  const { data, error } = await supabase
+    .from('links')
+    .insert([{ user_id: req.user.id, title, url, icon, position: count }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+// PUT update link
+router.put('/:id', authenticate, async (req, res) => {
+  const { title, url, icon, position } = req.body;
+
+  const { data, error } = await supabase
+    .from('links')
+    .update({ title, url, icon, position })
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// DELETE link
+router.delete('/:id', authenticate, async (req, res) => {
+  const { error } = await supabase
+    .from('links')
+    .delete()
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ message: 'Link deleted' });
+});
+
+// POST track click (public)
+router.post('/:id/click', async (req, res) => {
+  const { data: link } = await supabase
+    .from('links')
+    .select('id, user_id, clicks')
+    .eq('id', req.params.id)
+    .single();
+
+  if (!link) return res.status(404).json({ error: 'Link not found' });
+
+  await supabase.from('links').update({ clicks: link.clicks + 1 }).eq('id', link.id);
+
+  await supabase.from('analytics').insert([{
+    profile_id: link.user_id,
+    event_type: 'click',
+    link_id: link.id,
+  }]);
+
+  res.json({ success: true });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — backend/routes/analytics.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express = require('express');
+const router = express.Router();
+const supabase = require('../lib/supabaseAdmin');
+const authenticate = require('../middleware/auth');
+
+// POST track profile view (public)
+router.post('/view/:username', async (req, res) => {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('username', req.params.username)
+    .single();
+
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+  await supabase.from('analytics').insert([{
+    profile_id: profile.id,
+    event_type: 'view',
+  }]);
+
+  res.json({ success: true });
+});
+
+// GET analytics summary for current user
+router.get('/summary', authenticate, async (req, res) => {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', req.user.id)
+    .single();
+
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+  const { data: views } = await supabase
+    .from('analytics')
+    .select('created_at')
+    .eq('profile_id', profile.id)
+    .eq('event_type', 'view');
+
+  const { data: clicks } = await supabase
+    .from('analytics')
+    .select('created_at, link_id')
+    .eq('profile_id', profile.id)
+    .eq('event_type', 'click');
+
+  // Group views by date (last 7 days)
+  const now = new Date();
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
+  });
+
+  const viewsByDay = days.map(day => ({
+    date: day,
+    views: views.filter(v => v.created_at.startsWith(day)).length,
+  }));
+
+  res.json({
+    total_views: views.length,
+    total_clicks: clicks.length,
+    views_by_day: viewsByDay,
+  });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/package.json
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "devlinkhub-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0",
+    "recharts": "^2.10.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.8"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/vite.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5000'
+    }
+  }
+})
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/tailwind.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
+      colors: {
+        brand: {
+          50: '#f0f4ff',
+          100: '#e0e9ff',
+          500: '#4f6ef7',
+          600: '#3b5cf0',
+          700: '#2946d9',
+        },
+      },
+    },
+  },
+  plugins: [],
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/postcss.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/index.html
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <title>DevLink Hub</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/index.css
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 font-sans;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-150;
+  }
+  .btn-outline {
+    @apply border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-white font-medium px-4 py-2 rounded-lg transition-colors duration-150;
+  }
+  .input-field {
+    @apply w-full bg-gray-900 border border-gray-700 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-lg px-3 py-2 text-white placeholder-gray-500 outline-none transition-colors;
+  }
+  .card {
+    @apply bg-gray-900 border border-gray-800 rounded-xl p-5;
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/main.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.jsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/lib/supabaseClient.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/lib/api.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import axios from 'axios'
+import { supabase } from './supabaseClient'
+
+const api = axios.create({ baseURL: '/api' })
+
+// Attach auth token to every request
+api.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`
+  }
+  return config
+})
+
+export default api
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/context/AuthContext.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createContext, useContext, useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+
+const AuthContext = createContext({})
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signUp = (email, password) =>
+    supabase.auth.signUp({ email, password })
+
+  const signIn = (email, password) =>
+    supabase.auth.signInWithPassword({ email, password })
+
+  const signOut = () => supabase.auth.signOut()
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export const useAuth = () => useContext(AuthContext)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/App.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import Home from './pages/Home'
+import Login from './pages/Login'
+import Register from './pages/Register'
+import Dashboard from './pages/Dashboard'
+import EditProfile from './pages/EditProfile'
+import PublicProfile from './pages/PublicProfile'
+
+const ProtectedRoute = ({ children }) => {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>
+  return user ? children : <Navigate to="/login" replace />
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/edit" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+          <Route path="/u/:username" element={<PublicProfile />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/Home.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { Link } from 'react-router-dom'
+
+export default function Home() {
+  return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-4 text-center">
+      <div className="mb-4 inline-block px-3 py-1 bg-brand-500/10 text-brand-500 text-sm rounded-full font-mono">
+        v1.0 — Built for devs
+      </div>
+      <h1 className="text-5xl font-bold text-white mb-4 leading-tight">
+        Your dev identity,<br />
+        <span className="text-brand-500">one link.</span>
+      </h1>
+      <p className="text-gray-400 text-lg max-w-md mb-8">
+        Create a beautiful profile page with all your links — GitHub, projects, LinkedIn — in minutes.
+      </p>
+      <div className="flex gap-3">
+        <Link to="/register" className="btn-primary">Get started free</Link>
+        <Link to="/login" className="btn-outline">Sign in</Link>
+      </div>
+      <p className="mt-8 text-gray-600 text-sm font-mono">devlinkhub.io/u/yourname</p>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/Login.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+
+export default function Login() {
+  const { signIn } = useAuth()
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+    const { error } = await signIn(email, password)
+    setLoading(false)
+    if (error) return setError(error.message)
+    navigate('/dashboard')
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="card w-full max-w-sm">
+        <h1 className="text-xl font-semibold text-white mb-6">Sign in</h1>
+        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input className="input-field" type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="input-field" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <button className="btn-primary w-full" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+        <p className="text-gray-500 text-sm mt-4 text-center">
+          No account? <Link to="/register" className="text-brand-500 hover:underline">Register</Link>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/Register.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import api from '../lib/api'
+
+export default function Register() {
+  const { signUp } = useAuth()
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ email: '', password: '', username: '' })
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    const { error: authError } = await signUp(form.email, form.password)
+    if (authError) { setLoading(false); return setError(authError.message) }
+
+    // Wait a tick for auth state to settle, then create profile
+    setTimeout(async () => {
+      try {
+        await api.post('/profile', { username: form.username })
+        navigate('/dashboard')
+      } catch (err) {
+        setError(err.response?.data?.error || 'Profile creation failed')
+      }
+      setLoading(false)
+    }, 1500)
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="card w-full max-w-sm">
+        <h1 className="text-xl font-semibold text-white mb-6">Create your DevLink</h1>
+        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input className="input-field" placeholder="Username (e.g. shahzaib)" value={form.username} onChange={e => setForm({...form, username: e.target.value})} required />
+          <input className="input-field" type="email" placeholder="Email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required />
+          <input className="input-field" type="password" placeholder="Password (min 6 chars)" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required />
+          <button className="btn-primary w-full" disabled={loading}>
+            {loading ? 'Creating account...' : 'Create account'}
+          </button>
+        </form>
+        <p className="text-gray-500 text-sm mt-4 text-center">
+          Already registered? <Link to="/login" className="text-brand-500 hover:underline">Sign in</Link>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/Dashboard.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import api from '../lib/api'
+import Navbar from '../components/Navbar'
+import AnalyticsChart from '../components/AnalyticsChart'
+
+export default function Dashboard() {
+  const [profile, setProfile] = useState(null)
+  const [analytics, setAnalytics] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      api.get('/profile'),
+      api.get('/analytics/summary'),
+    ]).then(([profileRes, analyticsRes]) => {
+      setProfile(profileRes.data)
+      setAnalytics(analyticsRes.data)
+    }).finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>
+
+  return (
+    <div className="min-h-screen bg-gray-950">
+      <Navbar username={profile?.username} />
+      <main className="max-w-3xl mx-auto px-4 py-10">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <p className="text-gray-500 font-mono text-sm mt-1">devlinkhub.io/u/{profile?.username}</p>
+          </div>
+          <div className="flex gap-2">
+            <Link to={`/u/${profile?.username}`} target="_blank" className="btn-outline text-sm">Preview</Link>
+            <Link to="/edit" className="btn-primary text-sm">Edit profile</Link>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Total views', value: analytics?.total_views ?? 0 },
+            { label: 'Total clicks', value: analytics?.total_clicks ?? 0 },
+            { label: 'Links', value: profile?.links?.length ?? 0 },
+          ].map(stat => (
+            <div key={stat.label} className="card text-center">
+              <p className="text-3xl font-bold text-white">{stat.value}</p>
+              <p className="text-gray-500 text-sm mt-1">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Chart */}
+        {analytics && <AnalyticsChart data={analytics.views_by_day} />}
+
+        {/* Links list */}
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold text-white mb-4">Your links</h2>
+          {profile?.links?.length === 0 && (
+            <p className="text-gray-500 text-sm">No links yet. <Link to="/edit" className="text-brand-500 hover:underline">Add one</Link></p>
+          )}
+          <div className="space-y-2">
+            {profile?.links?.map(link => (
+              <div key={link.id} className="card flex items-center justify-between">
+                <div>
+                  <p className="text-white font-medium">{link.title}</p>
+                  <p className="text-gray-500 text-sm font-mono truncate max-w-xs">{link.url}</p>
+                </div>
+                <span className="text-gray-400 text-sm">{link.clicks} clicks</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/EditProfile.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import api from '../lib/api'
+import Navbar from '../components/Navbar'
+import ThemePicker from '../components/ThemePicker'
+
+export default function EditProfile() {
+  const navigate = useNavigate()
+  const [profile, setProfile] = useState(null)
+  const [links, setLinks] = useState([])
+  const [newLink, setNewLink] = useState({ title: '', url: '' })
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    api.get('/profile').then(r => {
+      setProfile(r.data)
+      setLinks(r.data.links || [])
+    })
+  }, [])
+
+  const saveProfile = async () => {
+    setSaving(true)
+    await api.put('/profile', {
+      full_name: profile.full_name,
+      bio: profile.bio,
+      theme: profile.theme,
+      github_username: profile.github_username,
+    })
+    setMsg('Saved!')
+    setSaving(false)
+    setTimeout(() => setMsg(''), 2000)
+  }
+
+  const addLink = async () => {
+    if (!newLink.title || !newLink.url) return
+    try {
+      const res = await api.post('/links', newLink)
+      setLinks([...links, res.data])
+      setNewLink({ title: '', url: '' })
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add link')
+    }
+  }
+
+  const deleteLink = async (id) => {
+    await api.delete(`/links/${id}`)
+    setLinks(links.filter(l => l.id !== id))
+  }
+
+  if (!profile) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>
+
+  return (
+    <div className="min-h-screen bg-gray-950">
+      <Navbar username={profile.username} />
+      <main className="max-w-2xl mx-auto px-4 py-10 space-y-8">
+        <h1 className="text-2xl font-bold text-white">Edit Profile</h1>
+
+        {/* Profile info */}
+        <div className="card space-y-4">
+          <h2 className="text-white font-semibold">Profile info</h2>
+          <input className="input-field" placeholder="Full name" value={profile.full_name || ''} onChange={e => setProfile({...profile, full_name: e.target.value})} />
+          <textarea className="input-field resize-none h-24" placeholder="Bio" value={profile.bio || ''} onChange={e => setProfile({...profile, bio: e.target.value})} />
+          <input className="input-field" placeholder="GitHub username" value={profile.github_username || ''} onChange={e => setProfile({...profile, github_username: e.target.value})} />
+        </div>
+
+        {/* Theme */}
+        <div className="card">
+          <h2 className="text-white font-semibold mb-4">Theme</h2>
+          <ThemePicker selected={profile.theme} onChange={theme => setProfile({...profile, theme})} />
+        </div>
+
+        <div className="flex items-center gap-4">
+          <button className="btn-primary" onClick={saveProfile} disabled={saving}>{saving ? 'Saving...' : 'Save profile'}</button>
+          {msg && <span className="text-green-400 text-sm">{msg}</span>}
+        </div>
+
+        {/* Links */}
+        <div className="card space-y-4">
+          <h2 className="text-white font-semibold">Links ({links.length}/5 on free plan)</h2>
+          {links.map(link => (
+            <div key={link.id} className="flex items-center gap-3">
+              <div className="flex-1">
+                <p className="text-white text-sm font-medium">{link.title}</p>
+                <p className="text-gray-500 text-xs font-mono truncate">{link.url}</p>
+              </div>
+              <button onClick={() => deleteLink(link.id)} className="text-red-500 hover:text-red-400 text-sm">Delete</button>
+            </div>
+          ))}
+          <div className="border-t border-gray-800 pt-4 space-y-3">
+            <p className="text-gray-400 text-sm font-semibold">Add a link</p>
+            <input className="input-field" placeholder="Title (e.g. GitHub)" value={newLink.title} onChange={e => setNewLink({...newLink, title: e.target.value})} />
+            <input className="input-field" placeholder="URL (https://...)" value={newLink.url} onChange={e => setNewLink({...newLink, url: e.target.value})} />
+            <button className="btn-primary" onClick={addLink}>Add link</button>
+          </div>
+        </div>
+
+        <button className="btn-outline" onClick={() => navigate('/dashboard')}>← Back to dashboard</button>
+      </main>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/pages/PublicProfile.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import axios from 'axios'
+
+const THEMES = {
+  default: 'bg-gray-950 text-white',
+  ocean: 'bg-blue-950 text-blue-100',
+  forest: 'bg-emerald-950 text-emerald-100',
+  sunset: 'bg-orange-950 text-orange-100',
+  midnight: 'bg-slate-950 text-slate-100',
+}
+
+const LINK_THEMES = {
+  default: 'bg-gray-800 hover:bg-gray-700 text-white',
+  ocean: 'bg-blue-800 hover:bg-blue-700 text-blue-100',
+  forest: 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100',
+  sunset: 'bg-orange-800 hover:bg-orange-700 text-orange-100',
+  midnight: 'bg-slate-800 hover:bg-slate-700 text-slate-100',
+}
+
+export default function PublicProfile() {
+  const { username } = useParams()
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+
+  useEffect(() => {
+    axios.get(`/api/profile/${username}`)
+      .then(r => {
+        setProfile(r.data)
+        // Track view
+        axios.post(`/api/analytics/view/${username}`).catch(() => {})
+      })
+      .catch(() => setNotFound(true))
+      .finally(() => setLoading(false))
+  }, [username])
+
+  const handleLinkClick = async (link) => {
+    await axios.post(`/api/links/${link.id}/click`).catch(() => {})
+    window.open(link.url, '_blank', 'noopener,noreferrer')
+  }
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400">Loading...</div>
+  if (notFound) return <div className="min-h-screen flex items-center justify-center bg-gray-950 text-gray-400">Profile not found</div>
+
+  const theme = profile.theme || 'default'
+
+  return (
+    <div className={`min-h-screen ${THEMES[theme] || THEMES.default} flex flex-col items-center justify-start py-16 px-4`}>
+      <div className="w-full max-w-sm">
+        {/* Avatar */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-20 h-20 rounded-full bg-brand-500 flex items-center justify-center text-2xl font-bold text-white mb-3">
+            {profile.full_name?.[0] || profile.username[0].toUpperCase()}
+          </div>
+          <h1 className="text-xl font-bold">
+            {profile.full_name || profile.username}
+          </h1>
+          <p className="font-mono text-sm opacity-60 mt-0.5">@{profile.username}</p>
+          {profile.bio && <p className="text-sm opacity-70 mt-3 text-center max-w-xs">{profile.bio}</p>}
+          {profile.github_username && (
+            <a
+              href={`https://github.com/${profile.github_username}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 text-xs opacity-50 hover:opacity-80 font-mono transition-opacity"
+            >
+              github.com/{profile.github_username}
+            </a>
+          )}
+        </div>
+
+        {/* Links */}
+        <div className="space-y-3 w-full">
+          {profile.links?.map(link => (
+            <button
+              key={link.id}
+              onClick={() => handleLinkClick(link)}
+              className={`w-full py-3 px-5 rounded-xl font-medium text-sm transition-colors duration-150 text-center ${LINK_THEMES[theme] || LINK_THEMES.default}`}
+            >
+              {link.title}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-center mt-10 text-xs opacity-30 font-mono">devlinkhub.io</p>
+      </div>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/components/Navbar.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+
+export default function Navbar({ username }) {
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate('/')
+  }
+
+  return (
+    <nav className="border-b border-gray-800 bg-gray-950 px-4 py-3">
+      <div className="max-w-3xl mx-auto flex items-center justify-between">
+        <Link to="/dashboard" className="text-white font-bold font-mono text-lg">DevLink Hub</Link>
+        <div className="flex items-center gap-4">
+          {username && (
+            <span className="text-gray-500 text-sm font-mono hidden sm:block">@{username}</span>
+          )}
+          <button onClick={handleSignOut} className="text-gray-400 hover:text-white text-sm transition-colors">Sign out</button>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/components/ThemePicker.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const THEMES = [
+  { id: 'default', label: 'Default', color: 'bg-gray-800' },
+  { id: 'ocean', label: 'Ocean', color: 'bg-blue-800' },
+  { id: 'forest', label: 'Forest', color: 'bg-emerald-800' },
+  { id: 'sunset', label: 'Sunset', color: 'bg-orange-800' },
+  { id: 'midnight', label: 'Midnight', color: 'bg-slate-700' },
+]
+
+export default function ThemePicker({ selected, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-3">
+      {THEMES.map(theme => (
+        <button
+          key={theme.id}
+          onClick={() => onChange(theme.id)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors
+            ${selected === theme.id
+              ? 'border-brand-500 text-white'
+              : 'border-gray-700 text-gray-400 hover:border-gray-500'
+            }`}
+        >
+          <span className={`w-4 h-4 rounded-full ${theme.color}`}></span>
+          {theme.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/src/components/AnalyticsChart.jsx
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+
+export default function AnalyticsChart({ data }) {
+  const formatted = data?.map(d => ({
+    ...d,
+    date: new Date(d.date).toLocaleDateString('en-US', { weekday: 'short' }),
+  }))
+
+  return (
+    <div className="card">
+      <h2 className="text-white font-semibold mb-5">Views — last 7 days</h2>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={formatted} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#4f6ef7" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="#4f6ef7" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+          <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
+            cursor={{ stroke: '#4f6ef7', strokeWidth: 1 }}
+          />
+          <Area type="monotone" dataKey="views" stroke="#4f6ef7" strokeWidth={2} fill="url(#viewsGrad)" />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — frontend/.env.example
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SETUP INSTRUCTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SUPABASE SETUP
+   ──────────────
+   a. Go to https://supabase.com → New project
+   b. Open SQL Editor → paste and run the SQL schema at the top of this file
+   c. In Project Settings → API, copy:
+      - Project URL → SUPABASE_URL / VITE_SUPABASE_URL
+      - anon/public key → VITE_SUPABASE_ANON_KEY
+      - service_role key → SUPABASE_SERVICE_ROLE_KEY (keep secret!)
+
+2. BACKEND SETUP
+   ─────────────
+   cd backend
+   npm install
+   cp .env.example .env       ← fill in your values
+   npm run dev                ← runs on port 5000
+
+3. FRONTEND SETUP
+   ──────────────
+   cd frontend
+   npm install
+   cp .env.example .env       ← fill in your VITE_ values
+   npm run dev                ← runs on port 5173
+
+4. VERCEL DEPLOYMENT (frontend)
+   ─────────────────────────────
+   - Connect your GitHub repo on vercel.com
+   - Set root directory to: frontend
+   - Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY as env vars
+   - Build command: npm run build  |  Output: dist
+
+5. RENDER DEPLOYMENT (backend)
+   ────────────────────────────
+   - New Web Service on render.com
+   - Root directory: backend
+   - Build command: npm install
+   - Start command: node index.js
+   - Add all .env vars in the Environment tab
+   - Copy Render URL → update FRONTEND_URL in backend env
+
+6. VITE PROXY (local dev only)
+   ────────────────────────────
+   vite.config.js proxies /api → localhost:5000
+   In production, set VITE_API_BASE_URL to your Render URL and update api.js:
+   baseURL: import.meta.env.VITE_API_BASE_URL || '/api'
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  WHAT'S INCLUDED ✓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ✓ Supabase Auth (sign up, sign in, sign out)
+  ✓ JWT middleware on Express — every protected route secured
+  ✓ Profile CRUD (create on register, update in EditProfile)
+  ✓ Links CRUD (add, delete, reorder position)
+  ✓ Free tier enforcement (5 link limit in backend)
+  ✓ Analytics: view tracking on public profile load
+  ✓ Analytics: click tracking per link
+  ✓ Analytics summary API (total views, clicks, 7-day chart)
+  ✓ 5 color themes on public profile page
+  ✓ Recharts area chart on dashboard
+  ✓ Rate limiting on all API routes (100 req/15min)
+  ✓ Public profile at /u/:username
+  ✓ Row Level Security (RLS) policies on all tables
+  ✓ Fully typed DB schema with FK + cascade deletes
+
+  NEXT STEPS (bonus features):
+  → GitHub auto-fetch: call https://api.github.com/users/:username to pre-fill bio/avatar
+  → Drag-to-reorder links with @dnd-kit/core
+  → Stripe integration for paid plan (remove 5-link cap)
+  → Custom domain support via Vercel
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  END OF FILE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,0 +1,1831 @@
+================================================================
+  AI RESUME & COVER LETTER GENERATOR — FULL PROJECT SCAFFOLD
+  Stack: React + Vite + Tailwind | Node.js + Express | Supabase | OpenAI
+================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DIRECTORY STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ai-resume-generator/
+├── frontend/                    ← React + Vite + Tailwind
+│   ├── public/
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── index.js
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── UsageBar.jsx
+│   │   │   └── DocumentCard.jsx
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Builder.jsx
+│   │   │   └── DocumentView.jsx
+│   │   ├── context/
+│   │   │   └── AuthContext.jsx
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   └── package.json
+│
+├── backend/                     ← Node.js + Express
+│   ├── src/
+│   │   ├── routes/
+│   │   │   ├── auth.js
+│   │   │   ├── generate.js
+│   │   │   ├── resumes.js
+│   │   │   └── pdf.js
+│   │   ├── middleware/
+│   │   │   ├── auth.js
+│   │   │   └── rateLimit.js
+│   │   ├── services/
+│   │   │   ├── openai.js
+│   │   │   └── pdfService.js
+│   │   └── index.js
+│   ├── .env.example
+│   └── package.json
+│
+├── supabase/
+│   └── schema.sql
+│
+└── README.md
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  POWERSHELL SETUP COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ── ROOT ──────────────────────────────────────────────────────
+mkdir ai-resume-generator
+cd ai-resume-generator
+
+# ── SUPABASE ──────────────────────────────────────────────────
+mkdir supabase
+New-Item supabase\schema.sql -ItemType File
+
+# ── BACKEND ───────────────────────────────────────────────────
+mkdir backend
+cd backend
+mkdir src
+mkdir src\routes, src\middleware, src\services
+
+New-Item src\index.js -ItemType File
+New-Item src\routes\auth.js,
+         src\routes\generate.js,
+         src\routes\resumes.js,
+         src\routes\pdf.js -ItemType File
+New-Item src\middleware\auth.js,
+         src\middleware\rateLimit.js -ItemType File
+New-Item src\services\openai.js,
+         src\services\pdfService.js -ItemType File
+New-Item .env.example -ItemType File
+
+npm init -y
+npm install @supabase/supabase-js cors dotenv express express-rate-limit openai pdfkit
+npm install --save-dev nodemon
+
+cd ..
+
+# ── FRONTEND ──────────────────────────────────────────────────
+npm create vite@latest frontend -- --template react
+cd frontend
+
+mkdir src\api, src\components, src\pages, src\context
+
+New-Item src\api\index.js -ItemType File
+
+New-Item src\components\Navbar.jsx,
+         src\components\UsageBar.jsx,
+         src\components\DocumentCard.jsx -ItemType File
+
+New-Item src\pages\Login.jsx,
+         src\pages\Dashboard.jsx,
+         src\pages\Builder.jsx,
+         src\pages\DocumentView.jsx -ItemType File
+
+New-Item src\context\AuthContext.jsx -ItemType File
+New-Item .env.example -ItemType File
+
+npm install @supabase/supabase-js react-router-dom
+npm install --save-dev tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+cd ..
+
+# ── README ────────────────────────────────────────────────────
+New-Item README.md -ItemType File
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SUPABASE SCHEMA  (supabase/schema.sql)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users (mirrors Supabase Auth)
+CREATE TABLE users (
+  id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email      TEXT UNIQUE NOT NULL,
+  plan       TEXT NOT NULL DEFAULT 'free',    -- 'free' | 'paid'
+  daily_used INTEGER NOT NULL DEFAULT 0,
+  last_reset DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Resumes
+CREATE TABLE resumes (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL DEFAULT 'Untitled Resume',
+  full_name   TEXT,
+  email       TEXT,
+  phone       TEXT,
+  location    TEXT,
+  skills      TEXT,
+  experience  TEXT,
+  job_title   TEXT,
+  job_desc    TEXT,
+  content     TEXT,           -- AI-generated resume text
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cover Letters
+CREATE TABLE cover_letters (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  resume_id   UUID REFERENCES resumes(id) ON DELETE SET NULL,
+  title       TEXT NOT NULL DEFAULT 'Untitled Cover Letter',
+  content     TEXT,           -- AI-generated cover letter text
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Generations log (for cost tracking & caching)
+CREATE TABLE generations (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES users(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL,  -- 'resume' | 'cover_letter'
+  prompt_hash TEXT,           -- SHA256 of prompt for cache lookup
+  prompt      TEXT,
+  response    TEXT,
+  tokens_used INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Row Level Security
+ALTER TABLE users         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE resumes       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cover_letters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE generations   ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users own their profile"
+  ON users FOR ALL USING (auth.uid() = id);
+
+CREATE POLICY "Users own their resumes"
+  ON resumes FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users own their cover letters"
+  ON cover_letters FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "Users own their generations"
+  ON generations FOR ALL USING (auth.uid() = user_id);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — package.json  (backend/package.json)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "ai-resume-backend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "openai": "^4.24.0",
+    "pdfkit": "^0.14.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — .env.example  (backend/.env.example)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PORT=4000
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+OPENAI_API_KEY=sk-your-openai-key
+FRONTEND_URL=http://localhost:5173
+DAILY_FREE_LIMIT=5
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Entry Point  (backend/src/index.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+require('dotenv').config();
+const express = require('express');
+const cors    = require('cors');
+
+const generateRoutes = require('./routes/generate');
+const resumeRoutes   = require('./routes/resumes');
+const pdfRoutes      = require('./routes/pdf');
+
+const app  = express();
+const PORT = process.env.PORT || 4000;
+
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(express.json());
+
+app.use('/api/generate', generateRoutes);
+app.use('/api/resumes',  resumeRoutes);
+app.use('/api/pdf',      pdfRoutes);
+
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Auth Middleware  (backend/src/middleware/auth.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+module.exports = async function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'No token provided' });
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data, error } = await supabase.auth.getUser(token);
+
+  if (error || !data.user) {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+
+  req.user = data.user;
+  next();
+};
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Rate Limit Middleware  (backend/src/middleware/rateLimit.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const rateLimit = require('express-rate-limit');
+
+// Global IP-based rate limiter — 100 requests per 15 minutes
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+// Strict limiter for AI generation routes — 20 requests per 15 minutes
+const generateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Generation rate limit reached. Please wait before trying again.' },
+});
+
+module.exports = { globalLimiter, generateLimiter };
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — OpenAI Service  (backend/src/services/openai.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const OpenAI = require('openai');
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function generateResume({ fullName, email, phone, location, skills, experience, jobTitle, jobDesc }) {
+  const prompt = `Generate a professional, ATS-friendly resume for the following person.
+
+Personal Details:
+- Name: ${fullName}
+- Email: ${email}
+- Phone: ${phone || 'N/A'}
+- Location: ${location || 'N/A'}
+
+Skills: ${skills}
+Experience: ${experience}
+Target Job Title: ${jobTitle}
+Job Description: ${jobDesc}
+
+Format the resume with these clearly labeled sections:
+## SUMMARY
+(2-3 sentence professional summary tailored to the job)
+
+## SKILLS
+(bullet list of relevant skills)
+
+## EXPERIENCE
+(formatted work experience entries)
+
+## EDUCATION
+(placeholder if not provided)
+
+## PROJECTS
+(suggest 1-2 relevant project ideas based on skills)
+
+Keep the tone professional. Tailor the content specifically to the job description provided.`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 1200,
+    temperature: 0.7,
+  });
+
+  return {
+    content: completion.choices[0].message.content,
+    tokens: completion.usage.total_tokens,
+  };
+}
+
+async function generateCoverLetter({ fullName, skills, experience, jobTitle, jobDesc, companyName }) {
+  const prompt = `Write a compelling, professional cover letter for a job application.
+
+Applicant: ${fullName}
+Skills: ${skills}
+Experience: ${experience}
+Target Role: ${jobTitle}
+Company: ${companyName || 'the company'}
+Job Description: ${jobDesc}
+
+Structure:
+- Opening paragraph: Express enthusiasm for the role and company
+- Middle paragraph: Highlight 2-3 most relevant skills/experiences
+- Closing paragraph: Call to action and thank you
+
+Keep it to 3 paragraphs, confident and personalized. Do not use generic filler phrases.`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [{ role: 'user', content: prompt }],
+    max_tokens: 600,
+    temperature: 0.75,
+  });
+
+  return {
+    content: completion.choices[0].message.content,
+    tokens: completion.usage.total_tokens,
+  };
+}
+
+module.exports = { generateResume, generateCoverLetter };
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — PDF Service  (backend/src/services/pdfService.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const PDFDocument = require('pdfkit');
+
+function generateResumePDF(resume, stream) {
+  const doc = new PDFDocument({ margin: 55, size: 'A4' });
+  doc.pipe(stream);
+
+  // Header
+  doc.fontSize(22).font('Helvetica-Bold')
+     .text(resume.full_name || 'Resume', { align: 'center' });
+
+  const contactParts = [resume.email, resume.phone, resume.location].filter(Boolean);
+  if (contactParts.length) {
+    doc.moveDown(0.3).fontSize(9).font('Helvetica')
+       .fillColor('#555555')
+       .text(contactParts.join('  |  '), { align: 'center' });
+  }
+
+  doc.moveDown(0.5)
+     .moveTo(55, doc.y).lineTo(540, doc.y)
+     .lineWidth(1).strokeColor('#4f46e5').stroke();
+
+  doc.moveDown(0.8).fillColor('#000000');
+
+  // Parse and render sections from AI content
+  const sections = (resume.content || '').split(/\n## /);
+  sections.forEach((section, idx) => {
+    const lines = section.trim().split('\n');
+    const heading = idx === 0 ? null : lines[0].replace('## ', '').trim();
+    const body    = idx === 0 ? lines.join('\n') : lines.slice(1).join('\n');
+
+    if (heading) {
+      doc.fontSize(11).font('Helvetica-Bold')
+         .fillColor('#4f46e5')
+         .text(heading.toUpperCase(), { continued: false });
+      doc.moveTo(55, doc.y + 2).lineTo(540, doc.y + 2)
+         .lineWidth(0.5).strokeColor('#c7d2fe').stroke();
+      doc.moveDown(0.4);
+    }
+
+    doc.fontSize(9.5).font('Helvetica').fillColor('#111111')
+       .text(body.trim(), { lineGap: 3 });
+    doc.moveDown(0.8);
+  });
+
+  doc.end();
+}
+
+function generateCoverLetterPDF(coverLetter, resume, stream) {
+  const doc = new PDFDocument({ margin: 55, size: 'A4' });
+  doc.pipe(stream);
+
+  // Header
+  doc.fontSize(20).font('Helvetica-Bold')
+     .text('Cover Letter', { align: 'center' });
+
+  if (resume?.full_name) {
+    doc.moveDown(0.3).fontSize(10).font('Helvetica')
+       .fillColor('#555555')
+       .text(resume.full_name, { align: 'center' });
+  }
+
+  doc.moveDown(0.5)
+     .moveTo(55, doc.y).lineTo(540, doc.y)
+     .lineWidth(1).strokeColor('#4f46e5').stroke();
+
+  doc.moveDown(1).fillColor('#111111').fontSize(10.5).font('Helvetica')
+     .text(coverLetter.content || '', { lineGap: 5 });
+
+  doc.end();
+}
+
+module.exports = { generateResumePDF, generateCoverLetterPDF };
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Generate Route  (backend/src/routes/generate.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { generateLimiter } = require('../middleware/rateLimit');
+const { generateResume, generateCoverLetter } = require('../services/openai');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const DAILY_FREE_LIMIT = parseInt(process.env.DAILY_FREE_LIMIT || '5', 10);
+
+// Helper: enforce daily usage limit
+async function checkAndIncrementUsage(userId) {
+  const today = new Date().toISOString().split('T')[0];
+
+  let { data: user } = await supabase
+    .from('users')
+    .select('plan, daily_used, last_reset')
+    .eq('id', userId)
+    .single();
+
+  // Upsert user row if it doesn't exist yet
+  if (!user) {
+    await supabase.from('users').upsert({ id: userId, email: '', daily_used: 0, last_reset: today });
+    user = { plan: 'free', daily_used: 0, last_reset: today };
+  }
+
+  // Reset counter if it's a new day
+  if (user.last_reset !== today) {
+    await supabase.from('users')
+      .update({ daily_used: 0, last_reset: today })
+      .eq('id', userId);
+    user.daily_used = 0;
+  }
+
+  if (user.plan === 'free' && user.daily_used >= DAILY_FREE_LIMIT) {
+    return { allowed: false, used: user.daily_used, limit: DAILY_FREE_LIMIT };
+  }
+
+  await supabase.from('users')
+    .update({ daily_used: user.daily_used + 1 })
+    .eq('id', userId);
+
+  return { allowed: true, used: user.daily_used + 1, limit: DAILY_FREE_LIMIT, plan: user.plan };
+}
+
+// POST /api/generate/resume
+router.post('/resume', auth, generateLimiter, async (req, res) => {
+  const usage = await checkAndIncrementUsage(req.user.id);
+  if (!usage.allowed) {
+    return res.status(403).json({
+      error: `Daily limit of ${usage.limit} generations reached. Upgrade to Pro for unlimited access.`,
+      usage,
+    });
+  }
+
+  const { fullName, email, phone, location, skills, experience, jobTitle, jobDesc } = req.body;
+  if (!skills || !experience || !jobTitle || !jobDesc) {
+    return res.status(400).json({ error: 'skills, experience, jobTitle and jobDesc are required.' });
+  }
+
+  try {
+    const { content, tokens } = await generateResume({
+      fullName, email, phone, location, skills, experience, jobTitle, jobDesc,
+    });
+
+    // Save resume to DB
+    const { data: resume, error } = await supabase
+      .from('resumes')
+      .insert({
+        user_id: req.user.id,
+        title: `${jobTitle} Resume`,
+        full_name: fullName,
+        email,
+        phone,
+        location,
+        skills,
+        experience,
+        job_title: jobTitle,
+        job_desc: jobDesc,
+        content,
+      })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Log generation
+    await supabase.from('generations').insert({
+      user_id: req.user.id,
+      type: 'resume',
+      prompt: `${jobTitle} | ${skills}`,
+      response: content,
+      tokens_used: tokens,
+    });
+
+    res.status(201).json({ resume, usage });
+  } catch (err) {
+    console.error('OpenAI error:', err.message);
+    res.status(500).json({ error: 'AI generation failed. Please try again.' });
+  }
+});
+
+// POST /api/generate/cover-letter
+router.post('/cover-letter', auth, generateLimiter, async (req, res) => {
+  const usage = await checkAndIncrementUsage(req.user.id);
+  if (!usage.allowed) {
+    return res.status(403).json({
+      error: `Daily limit of ${usage.limit} generations reached. Upgrade to Pro for unlimited access.`,
+      usage,
+    });
+  }
+
+  const { resumeId, fullName, skills, experience, jobTitle, jobDesc, companyName } = req.body;
+
+  try {
+    const { content, tokens } = await generateCoverLetter({
+      fullName, skills, experience, jobTitle, jobDesc, companyName,
+    });
+
+    const { data: letter, error } = await supabase
+      .from('cover_letters')
+      .insert({
+        user_id: req.user.id,
+        resume_id: resumeId || null,
+        title: `Cover Letter — ${jobTitle}`,
+        content,
+      })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabase.from('generations').insert({
+      user_id: req.user.id,
+      type: 'cover_letter',
+      prompt: `${jobTitle} @ ${companyName || 'N/A'}`,
+      response: content,
+      tokens_used: tokens,
+    });
+
+    res.status(201).json({ letter, usage });
+  } catch (err) {
+    console.error('OpenAI error:', err.message);
+    res.status(500).json({ error: 'AI generation failed. Please try again.' });
+  }
+});
+
+// GET /api/generate/usage — check remaining daily usage
+router.get('/usage', auth, async (req, res) => {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: user } = await supabase
+    .from('users')
+    .select('plan, daily_used, last_reset')
+    .eq('id', req.user.id)
+    .single();
+
+  if (!user) return res.json({ used: 0, limit: DAILY_FREE_LIMIT, plan: 'free' });
+
+  const used = user.last_reset === today ? user.daily_used : 0;
+  res.json({ used, limit: DAILY_FREE_LIMIT, plan: user.plan });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — Resumes Route  (backend/src/routes/resumes.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// GET /api/resumes — list all resumes + cover letters
+router.get('/', auth, async (req, res) => {
+  const [{ data: resumes }, { data: letters }] = await Promise.all([
+    supabase.from('resumes').select('*').eq('user_id', req.user.id).order('created_at', { ascending: false }),
+    supabase.from('cover_letters').select('*').eq('user_id', req.user.id).order('created_at', { ascending: false }),
+  ]);
+  res.json({ resumes: resumes || [], cover_letters: letters || [] });
+});
+
+// GET /api/resumes/:id
+router.get('/:id', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('resumes')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+  if (error) return res.status(404).json({ error: 'Resume not found' });
+  res.json(data);
+});
+
+// GET /api/resumes/cover-letter/:id
+router.get('/cover-letter/:id', auth, async (req, res) => {
+  const { data, error } = await supabase
+    .from('cover_letters')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+  if (error) return res.status(404).json({ error: 'Cover letter not found' });
+  res.json(data);
+});
+
+// DELETE /api/resumes/:id
+router.delete('/:id', auth, async (req, res) => {
+  await supabase.from('resumes').delete().eq('id', req.params.id).eq('user_id', req.user.id);
+  res.json({ message: 'Deleted' });
+});
+
+// DELETE /api/resumes/cover-letter/:id
+router.delete('/cover-letter/:id', auth, async (req, res) => {
+  await supabase.from('cover_letters').delete().eq('id', req.params.id).eq('user_id', req.user.id);
+  res.json({ message: 'Deleted' });
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BACKEND — PDF Route  (backend/src/routes/pdf.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const express  = require('express');
+const router   = express.Router();
+const auth     = require('../middleware/auth');
+const { generateResumePDF, generateCoverLetterPDF } = require('../services/pdfService');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// GET /api/pdf/resume/:id
+router.get('/resume/:id', auth, async (req, res) => {
+  const { data: resume, error } = await supabase
+    .from('resumes')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+
+  if (error || !resume) return res.status(404).json({ error: 'Resume not found' });
+
+  const filename = `${(resume.full_name || 'resume').replace(/\s+/g, '_')}_resume.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  generateResumePDF(resume, res);
+});
+
+// GET /api/pdf/cover-letter/:id
+router.get('/cover-letter/:id', auth, async (req, res) => {
+  const { data: letter, error } = await supabase
+    .from('cover_letters')
+    .select('*, resumes(full_name, email)')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user.id)
+    .single();
+
+  if (error || !letter) return res.status(404).json({ error: 'Cover letter not found' });
+
+  const filename = `cover_letter_${req.params.id.slice(0, 8)}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  generateCoverLetterPDF(letter, letter.resumes, res);
+});
+
+module.exports = router;
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — package.json  (frontend/package.json)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{
+  "name": "ai-resume-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.21.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "vite": "^5.0.8"
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — vite.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:4000',
+    },
+  },
+});
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — tailwind.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+      },
+      colors: {
+        brand: {
+          50:  '#eef2ff',
+          100: '#e0e7ff',
+          500: '#6366f1',
+          600: '#4f46e5',
+          700: '#4338ca',
+        },
+      },
+    },
+  },
+  plugins: [],
+};
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — postcss.config.js
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — index.html
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <title>ResumeAI — Build your dream resume</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — index.css  (src/index.css)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-outline {
+    @apply border border-slate-300 hover:border-slate-400 bg-white text-slate-700 font-medium px-4 py-2 rounded-xl transition-colors duration-150;
+  }
+  .btn-ghost {
+    @apply text-slate-500 hover:text-slate-800 hover:bg-slate-100 font-medium px-3 py-2 rounded-lg transition-colors duration-150;
+  }
+  .input-field {
+    @apply w-full bg-white border border-slate-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 rounded-xl px-4 py-2.5 text-slate-900 placeholder-slate-400 outline-none transition-all;
+  }
+  .card {
+    @apply bg-white border border-slate-200 rounded-2xl p-6 shadow-sm;
+  }
+  .label {
+    @apply block text-sm font-medium text-slate-700 mb-1.5;
+  }
+  .section-title {
+    @apply text-xs font-semibold text-slate-400 uppercase tracking-widest mb-4;
+  }
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — main.jsx  (src/main.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — .env.example  (frontend/.env.example)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — API Client  (src/api/index.js)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
+
+export async function apiFetch(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || 'Request failed');
+  }
+
+  // PDF responses should be handled by caller
+  if (res.headers.get('Content-Type')?.includes('application/pdf')) {
+    return res.blob();
+  }
+
+  return res.json();
+}
+
+export async function downloadPDF(path, filename) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const res = await fetch(`/api${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) throw new Error('PDF download failed');
+
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — AuthContext  (src/context/AuthContext.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '../api';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser]       = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => setUser(session?.user ?? null)
+    );
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const signIn  = (email, password) => supabase.auth.signInWithPassword({ email, password });
+  const signUp  = (email, password) => supabase.auth.signUp({ email, password });
+  const signOut = () => supabase.auth.signOut();
+
+  return (
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — App.jsx  (src/App.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login        from './pages/Login';
+import Dashboard    from './pages/Dashboard';
+import Builder      from './pages/Builder';
+import DocumentView from './pages/DocumentView';
+import Navbar       from './components/Navbar';
+
+function PrivateRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+  return user ? children : <Navigate to="/login" replace />;
+}
+
+function Layout({ children }) {
+  return (
+    <>
+      <Navbar />
+      <main className="max-w-5xl mx-auto px-4 py-8">{children}</main>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={
+            <PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>
+          } />
+          <Route path="/builder" element={
+            <PrivateRoute><Layout><Builder /></Layout></PrivateRoute>
+          } />
+          <Route path="/document/:type/:id" element={
+            <PrivateRoute><Layout><DocumentView /></Layout></PrivateRoute>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Navbar  (src/components/Navbar.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function Navbar() {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  return (
+    <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+        <Link to="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center text-white font-bold text-sm">R</div>
+          <span className="font-bold text-slate-900 text-lg">ResumeAI</span>
+        </Link>
+        <div className="flex items-center gap-3">
+          <Link to="/builder" className="btn-primary text-sm py-2 px-4">
+            + New Document
+          </Link>
+          {user && (
+            <span className="text-sm text-slate-400 hidden sm:block">{user.email}</span>
+          )}
+          <button onClick={handleSignOut} className="btn-ghost text-sm">Sign out</button>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — UsageBar  (src/components/UsageBar.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export default function UsageBar({ used, limit, plan }) {
+  const pct = Math.min((used / limit) * 100, 100);
+  const remaining = limit - used;
+  const isNearLimit = remaining <= 1;
+
+  if (plan === 'paid') {
+    return (
+      <div className="flex items-center gap-2 text-sm text-emerald-600 font-medium">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+        Pro plan — unlimited generations
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-slate-700">Daily generations</span>
+        <span className={`text-sm font-semibold ${isNearLimit ? 'text-red-500' : 'text-slate-500'}`}>
+          {used} / {limit}
+        </span>
+      </div>
+      <div className="w-full bg-slate-100 rounded-full h-2">
+        <div
+          className={`h-2 rounded-full transition-all duration-500 ${
+            pct >= 100 ? 'bg-red-500' : pct >= 60 ? 'bg-amber-400' : 'bg-brand-500'
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {pct >= 100 && (
+        <p className="text-xs text-red-500 mt-2">
+          Daily limit reached. Resets at midnight or <span className="font-semibold underline cursor-pointer">upgrade to Pro</span>.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — DocumentCard  (src/components/DocumentCard.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { Link } from 'react-router-dom';
+
+export default function DocumentCard({ doc, type, onDelete }) {
+  const icon   = type === 'resume' ? '📄' : '✉️';
+  const route  = type === 'resume' ? 'resume' : 'cover-letter';
+  const date   = new Date(doc.created_at).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  });
+
+  return (
+    <div className="card flex items-start justify-between gap-4 hover:shadow-md transition-shadow">
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="text-2xl mt-0.5">{icon}</span>
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900 truncate">{doc.title}</p>
+          <p className="text-sm text-slate-400 mt-0.5">{date}</p>
+          {doc.job_title && (
+            <span className="inline-block mt-2 text-xs bg-brand-50 text-brand-600 font-medium px-2 py-0.5 rounded-full">
+              {doc.job_title}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <Link
+          to={`/document/${route}/${doc.id}`}
+          className="btn-outline text-sm py-1.5 px-3"
+        >
+          View
+        </Link>
+        <button
+          onClick={() => onDelete(doc.id)}
+          className="text-slate-300 hover:text-red-400 transition-colors text-xl leading-none"
+          title="Delete"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Login Page  (src/pages/Login.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export default function Login() {
+  const { signIn, signUp } = useAuth();
+  const navigate = useNavigate();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const fn = isSignUp ? signUp : signIn;
+    const { error: err } = await fn(email, password);
+    setLoading(false);
+    if (err) return setError(err.message);
+    navigate('/');
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-brand-50 via-white to-slate-100 flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
+
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="w-14 h-14 rounded-2xl bg-brand-600 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-3 shadow-lg shadow-brand-200">R</div>
+          <h1 className="text-2xl font-bold text-slate-900">ResumeAI</h1>
+          <p className="text-slate-500 text-sm mt-1">Build job-ready resumes with AI</p>
+        </div>
+
+        <div className="card shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-800 mb-5">
+            {isSignUp ? 'Create your account' : 'Welcome back'}
+          </h2>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="label">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="input-field"
+              />
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Min. 6 characters"
+                className="input-field"
+              />
+            </div>
+            <button type="submit" className="btn-primary w-full" disabled={loading}>
+              {loading
+                ? (isSignUp ? 'Creating account...' : 'Signing in...')
+                : (isSignUp ? 'Create account' : 'Sign in')}
+            </button>
+          </form>
+
+          <p className="text-sm text-center text-slate-500 mt-5">
+            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+            <button
+              onClick={() => { setIsSignUp(v => !v); setError(''); }}
+              className="text-brand-600 font-medium hover:underline"
+            >
+              {isSignUp ? 'Sign in' : 'Sign up free'}
+            </button>
+          </p>
+        </div>
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          Free plan includes 5 AI generations per day.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Dashboard  (src/pages/Dashboard.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { apiFetch } from '../api';
+import DocumentCard from '../components/DocumentCard';
+import UsageBar from '../components/UsageBar';
+
+export default function Dashboard() {
+  const [data, setData]     = useState({ resumes: [], cover_letters: [] });
+  const [usage, setUsage]   = useState({ used: 0, limit: 5, plan: 'free' });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch('/resumes'),
+      apiFetch('/generate/usage'),
+    ]).then(([docs, usageData]) => {
+      setData(docs);
+      setUsage(usageData);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  async function handleDelete(id, type) {
+    const path = type === 'resume' ? `/resumes/${id}` : `/resumes/cover-letter/${id}`;
+    await apiFetch(path, { method: 'DELETE' });
+    setData(prev => ({
+      resumes:       type === 'resume'       ? prev.resumes.filter(r => r.id !== id)       : prev.resumes,
+      cover_letters: type === 'cover_letter' ? prev.cover_letters.filter(l => l.id !== id) : prev.cover_letters,
+    }));
+  }
+
+  const totalDocs = data.resumes.length + data.cover_letters.length;
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-8">
+
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Your documents</h1>
+          <p className="text-slate-500 mt-1">
+            {totalDocs === 0 ? 'No documents yet — create your first one!' : `${totalDocs} document${totalDocs !== 1 ? 's' : ''} saved`}
+          </p>
+        </div>
+        <Link to="/builder" className="btn-primary">+ New document</Link>
+      </div>
+
+      {/* Usage */}
+      <UsageBar {...usage} />
+
+      {/* Empty state */}
+      {totalDocs === 0 && (
+        <div className="card text-center py-16">
+          <div className="text-5xl mb-4">📄</div>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Build your first resume</h2>
+          <p className="text-slate-500 text-sm mb-6 max-w-xs mx-auto">
+            Enter your details and let AI write a professional, job-ready resume in seconds.
+          </p>
+          <Link to="/builder" className="btn-primary inline-block">Get started</Link>
+        </div>
+      )}
+
+      {/* Resumes */}
+      {data.resumes.length > 0 && (
+        <section>
+          <p className="section-title">Resumes ({data.resumes.length})</p>
+          <div className="space-y-3">
+            {data.resumes.map(r => (
+              <DocumentCard key={r.id} doc={r} type="resume" onDelete={id => handleDelete(id, 'resume')} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Cover Letters */}
+      {data.cover_letters.length > 0 && (
+        <section>
+          <p className="section-title">Cover Letters ({data.cover_letters.length})</p>
+          <div className="space-y-3">
+            {data.cover_letters.map(l => (
+              <DocumentCard key={l.id} doc={l} type="cover_letter" onDelete={id => handleDelete(id, 'cover_letter')} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Builder Page  (src/pages/Builder.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../api';
+
+const TABS = [
+  { id: 'resume',       label: '📄 Resume' },
+  { id: 'cover_letter', label: '✉️ Cover Letter' },
+];
+
+const emptyResume = {
+  fullName: '', email: '', phone: '', location: '',
+  skills: '', experience: '', jobTitle: '', jobDesc: '',
+};
+
+const emptyCover = {
+  fullName: '', skills: '', experience: '',
+  jobTitle: '', jobDesc: '', companyName: '',
+};
+
+export default function Builder() {
+  const navigate = useNavigate();
+  const [tab, setTab]         = useState('resume');
+  const [resumeForm, setResumeForm] = useState(emptyResume);
+  const [coverForm, setCoverForm]   = useState(emptyCover);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError]     = useState('');
+
+  function updateResume(field, value) { setResumeForm(p => ({ ...p, [field]: value })); }
+  function updateCover(field, value)  { setCoverForm(p => ({ ...p, [field]: value })); }
+
+  async function handleGenerate() {
+    setError('');
+    setGenerating(true);
+    try {
+      if (tab === 'resume') {
+        const { resume } = await apiFetch('/generate/resume', {
+          method: 'POST',
+          body: JSON.stringify(resumeForm),
+        });
+        navigate(`/document/resume/${resume.id}`);
+      } else {
+        const { letter } = await apiFetch('/generate/cover-letter', {
+          method: 'POST',
+          body: JSON.stringify(coverForm),
+        });
+        navigate(`/document/cover-letter/${letter.id}`);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+
+      {/* Tabs */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-5">Create a document</h1>
+        <div className="flex gap-2 bg-slate-100 p-1 rounded-xl w-fit">
+          {TABS.map(t => (
+            <button
+              key={t.id}
+              onClick={() => { setTab(t.id); setError(''); }}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? 'bg-white shadow-sm text-slate-900'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+          {error}
+        </div>
+      )}
+
+      {/* Resume Form */}
+      {tab === 'resume' && (
+        <div className="space-y-5">
+          <div className="card space-y-4">
+            <p className="section-title">Personal info</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Full name *</label>
+                <input className="input-field" placeholder="Alex Johnson" value={resumeForm.fullName} onChange={e => updateResume('fullName', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Email *</label>
+                <input className="input-field" type="email" placeholder="alex@email.com" value={resumeForm.email} onChange={e => updateResume('email', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Phone</label>
+                <input className="input-field" placeholder="+1 555 000 0000" value={resumeForm.phone} onChange={e => updateResume('phone', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Location</label>
+                <input className="input-field" placeholder="New York, NY" value={resumeForm.location} onChange={e => updateResume('location', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <p className="section-title">Background</p>
+            <div>
+              <label className="label">Skills *</label>
+              <input className="input-field" placeholder="React, Node.js, TypeScript, SQL, Git..." value={resumeForm.skills} onChange={e => updateResume('skills', e.target.value)} />
+              <p className="text-xs text-slate-400 mt-1">Comma-separated list of your top skills</p>
+            </div>
+            <div>
+              <label className="label">Experience *</label>
+              <textarea
+                className="input-field resize-none h-28"
+                placeholder="2 years as frontend developer at Acme Inc. Built React dashboards. Led a team of 3..."
+                value={resumeForm.experience}
+                onChange={e => updateResume('experience', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <p className="section-title">Target job</p>
+            <div>
+              <label className="label">Job title *</label>
+              <input className="input-field" placeholder="Senior Frontend Developer" value={resumeForm.jobTitle} onChange={e => updateResume('jobTitle', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Job description *</label>
+              <textarea
+                className="input-field resize-none h-32"
+                placeholder="Paste the job description here. The AI will tailor your resume to match it..."
+                value={resumeForm.jobDesc}
+                onChange={e => updateResume('jobDesc', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cover Letter Form */}
+      {tab === 'cover_letter' && (
+        <div className="space-y-5">
+          <div className="card space-y-4">
+            <p className="section-title">Your details</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Full name *</label>
+                <input className="input-field" placeholder="Alex Johnson" value={coverForm.fullName} onChange={e => updateCover('fullName', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Company name</label>
+                <input className="input-field" placeholder="Google, Meta, etc." value={coverForm.companyName} onChange={e => updateCover('companyName', e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="label">Skills *</label>
+              <input className="input-field" placeholder="React, Node.js, TypeScript..." value={coverForm.skills} onChange={e => updateCover('skills', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Experience *</label>
+              <textarea
+                className="input-field resize-none h-24"
+                placeholder="Briefly describe your background and relevant experience..."
+                value={coverForm.experience}
+                onChange={e => updateCover('experience', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="card space-y-4">
+            <p className="section-title">Target job</p>
+            <div>
+              <label className="label">Job title *</label>
+              <input className="input-field" placeholder="Frontend Developer" value={coverForm.jobTitle} onChange={e => updateCover('jobTitle', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Job description *</label>
+              <textarea
+                className="input-field resize-none h-32"
+                placeholder="Paste the job description to personalize the cover letter..."
+                value={coverForm.jobDesc}
+                onChange={e => updateCover('jobDesc', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate button */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={handleGenerate}
+          disabled={generating}
+          className="btn-primary flex items-center gap-2"
+        >
+          {generating ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Generating with AI...
+            </>
+          ) : (
+            `✨ Generate ${tab === 'resume' ? 'resume' : 'cover letter'}`
+          )}
+        </button>
+        <p className="text-xs text-slate-400">Uses 1 of your daily generations</p>
+      </div>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FRONTEND — Document View  (src/pages/DocumentView.jsx)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { apiFetch, downloadPDF } from '../api';
+
+export default function DocumentView() {
+  const { type, id } = useParams();
+  const navigate     = useNavigate();
+  const [doc, setDoc]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+
+  const isResume = type === 'resume';
+
+  useEffect(() => {
+    const path = isResume ? `/resumes/${id}` : `/resumes/cover-letter/${id}`;
+    apiFetch(path).then(setDoc).finally(() => setLoading(false));
+  }, [id, type]);
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const pdfPath = isResume ? `/pdf/resume/${id}` : `/pdf/cover-letter/${id}`;
+      const filename = isResume
+        ? `${(doc.full_name || 'resume').replace(/\s+/g, '_')}_resume.pdf`
+        : `cover_letter_${id.slice(0, 8)}.pdf`;
+      await downloadPDF(pdfPath, filename);
+    } catch {
+      alert('PDF download failed. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm('Delete this document?')) return;
+    const path = isResume ? `/resumes/${id}` : `/resumes/cover-letter/${id}`;
+    await apiFetch(path, { method: 'DELETE' });
+    navigate('/');
+  }
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (!doc) return (
+    <div className="text-center py-24">
+      <p className="text-slate-500">Document not found.</p>
+      <Link to="/" className="text-brand-600 hover:underline text-sm mt-2 inline-block">← Back to dashboard</Link>
+    </div>
+  );
+
+  // Render AI content with basic section formatting
+  const renderContent = (content) => {
+    if (!content) return <p className="text-slate-400">No content generated.</p>;
+
+    return content.split('\n').map((line, i) => {
+      if (line.startsWith('## ')) {
+        return (
+          <h3 key={i} className="text-xs font-bold text-brand-600 uppercase tracking-widest mt-6 mb-2 pb-1 border-b border-brand-100">
+            {line.replace('## ', '')}
+          </h3>
+        );
+      }
+      if (line.startsWith('- ') || line.startsWith('• ')) {
+        return (
+          <li key={i} className="text-slate-700 text-sm leading-relaxed ml-4 list-disc">
+            {line.replace(/^[-•]\s/, '')}
+          </li>
+        );
+      }
+      if (line.trim() === '') return <div key={i} className="h-2" />;
+      return <p key={i} className="text-slate-700 text-sm leading-relaxed">{line}</p>;
+    });
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6">
+
+      {/* Top bar */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Link to="/" className="text-sm text-slate-400 hover:text-slate-600 mb-2 inline-block">← Dashboard</Link>
+          <h1 className="text-xl font-bold text-slate-900">{doc.title}</h1>
+          <p className="text-sm text-slate-400 mt-0.5">
+            Created {new Date(doc.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="btn-primary text-sm py-2 flex items-center gap-2"
+          >
+            {downloading ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Exporting...
+              </>
+            ) : '⬇ Download PDF'}
+          </button>
+          <button onClick={handleDelete} className="btn-outline text-sm text-red-500 border-red-200 hover:bg-red-50 py-2">
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {/* Info chips */}
+      {isResume && (
+        <div className="flex flex-wrap gap-2">
+          {doc.full_name && <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-medium">{doc.full_name}</span>}
+          {doc.job_title && <span className="text-xs bg-brand-50 text-brand-600 px-3 py-1 rounded-full font-medium">{doc.job_title}</span>}
+          {doc.location  && <span className="text-xs bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-medium">{doc.location}</span>}
+        </div>
+      )}
+
+      {/* Document content */}
+      <div className="card bg-white shadow-sm">
+        <div className="prose max-w-none">
+          {renderContent(doc.content)}
+        </div>
+      </div>
+
+      {/* Tip */}
+      <p className="text-xs text-slate-400 text-center pb-4">
+        Tip: Download as PDF to submit directly to employers or paste content into LinkedIn.
+      </p>
+    </div>
+  );
+}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  README.md
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# ResumeAI — AI Resume & Cover Letter Generator
+
+An AI-powered SaaS app that generates professional,
+ATS-friendly resumes and cover letters in seconds.
+
+## Tech Stack
+- Frontend: React + Vite + Tailwind CSS
+- Backend:  Node.js + Express
+- Database: Supabase (PostgreSQL + Auth)
+- AI:       OpenAI GPT-3.5-turbo
+- PDF:      PDFKit
+
+## Setup
+
+### 1. Supabase
+- Create a project at supabase.com
+- Run supabase/schema.sql in the SQL editor
+- Copy Project URL, anon key, and service role key
+
+### 2. OpenAI
+- Create an account at platform.openai.com
+- Generate an API key (sk-...)
+
+### 3. Backend
+  cd backend
+  npm install
+  cp .env.example .env    ← fill in your values
+  npm run dev             ← runs on :4000
+
+### 4. Frontend
+  cd frontend
+  npm install
+  cp .env.example .env    ← fill in your Supabase keys
+  npm run dev             ← runs on :5173
+
+## Features
+- Email/password auth via Supabase
+- AI resume generation (GPT-3.5-turbo)
+- AI cover letter generation
+- PDF export for both document types
+- Daily usage limit (5 generations/day on free plan)
+- Usage bar with visual indicator
+- Save/view/delete documents from dashboard
+
+## Monetization
+- Free plan: 5 generations/day
+- Paid plan: flip users.plan to 'paid' via Stripe webhook
+  to remove the daily cap
+
+## Cost Control
+- GPT-3.5-turbo is used (not GPT-4) to minimize cost
+- Tokens capped at 1200 (resume) and 600 (cover letter)
+- IP + per-user rate limiting on all generation routes
+- Generations table logs all usage for monitoring
+
+================================================================
+  END OF FILE
+================================================================
